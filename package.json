@@ -1,0 +1,57 @@
+{
+  "name": "antigravity-orbit",
+  "displayName": "Orbit",
+  "description": "Switch orbits in a single click. Seamless, isolated developer profiles and sandboxed workspaces for Google Antigravity IDE.",
+  "version": "1.0.0",
+  "publisher": "sajedulisakib-001",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "keywords": [
+    "antigravity",
+    "orbit",
+    "profile",
+    "profiles",
+    "profile manager",
+    "productivity",
+    "workspace",
+    "isolation"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "antigravity-orbit.switch",
+        "title": "Orbit: Switch Profile",
+        "category": "Orbit"
+      },
+      {
+        "command": "antigravity-orbit.create",
+        "title": "Orbit: Create New Profile",
+        "category": "Orbit"
+      },
+      {
+        "command": "antigravity-orbit.openFolder",
+        "title": "Orbit: Open Profiles Folder",
+        "category": "Orbit"
+      }
+    ],
+    "configuration": {
+      "title": "Orbit",
+      "properties": {
+        "antigravity-orbit.autoRestoreLastProfile": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically restore and open the last active orbit profile when launching Antigravity IDE."
+        }
+      }
+    }
+  }
+}
