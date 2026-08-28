@@ -1,4 +1,4 @@
-# 🪐 Antigravity Orbit
+# 🪐 Orbit
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-1.0.0-blue.svg?style=flat-square" alt="Version 1.0.0" />
@@ -14,14 +14,14 @@
 
 ---
 
-## 🌟 Why Antigravity Orbit?
+## 🌟 Why Orbit?
 
 By default, modern code editors share global extensions and settings across all projects. If you work across diverse technology stacks (e.g., *Web Development*, *Python AI/ML*, *Rust Systems*, *Cloud Infrastructure*, or *Blockchain*), this causes:
 - 🐢 **Editor Bloat**: Dozens of background language servers and linters running simultaneously.
 - ⚡ **Conflicting Toolchains**: Overlapping formatters, linters, and shortcut bindings fighting for control.
 - 🧹 **Clutter**: Extension lists filled with tools irrelevant to your current task.
 
-**Antigravity Orbit** gives you clean, sandbox-isolated workspaces with instantaneous switching right from your status bar or command palette.
+**Orbit** gives you clean, sandbox-isolated workspaces with instantaneous switching right from your status bar or command palette.
 
 ---
 

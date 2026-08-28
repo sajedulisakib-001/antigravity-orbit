@@ -71,7 +71,7 @@ async function activate(context) {
     const profileStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
     profileStatusBarItem.command = 'antigravity-orbit.switch';
     profileStatusBarItem.text = `$(globe) Orbit: ${currentProfile}`;
-    profileStatusBarItem.tooltip = `Antigravity Orbit: ${currentProfile}\nClick to switch, create, or manage profiles`;
+    profileStatusBarItem.tooltip = `Orbit: ${currentProfile}\nClick to switch, create, or manage profiles`;
     profileStatusBarItem.show();
     context.subscriptions.push(profileStatusBarItem);
 }
