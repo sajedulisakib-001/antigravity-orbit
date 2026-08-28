@@ -4,6 +4,13 @@
   "description": "Switch orbits in a single click. Seamless, isolated developer profiles and sandboxed workspaces for Google Antigravity IDE.",
   "version": "1.0.0",
   "publisher": "sajedulisakib-001",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sajedulisakib-001/antigravity-orbit"
+  },
+  "scripts": {
+    "package": "npx @vscode/vsce package --no-dependencies"
+  },
   "license": "MIT",
   "engines": {
     "vscode": "^1.80.0"
