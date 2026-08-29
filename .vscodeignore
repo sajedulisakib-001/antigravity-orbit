@@ -6,3 +6,11 @@
 *.vsix
 scripts/**
 build-vsix.js
+*.log
+*.tmp
+.profiles*
+profiles.json
+profiles/**
+user-data/**
+extensions/**
+scratch/**
