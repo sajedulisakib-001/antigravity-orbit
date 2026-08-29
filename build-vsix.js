@@ -34,7 +34,7 @@ function buildVsix() {
     fs.mkdirSync(extensionDir, { recursive: true, mode: 0o700 });
 
     // 2. Copy source files into extension/
-    const filesToCopy = ['package.json', 'extension.js', 'README.md', 'LICENSE'];
+    const filesToCopy = ['package.json', 'extension.js', 'README.md', 'icon.png', 'LICENSE'];
     for (const file of filesToCopy) {
         const src = path.join(projectDir, file);
         if (fs.existsSync(src)) {
@@ -59,6 +59,7 @@ function buildVsix() {
   <Default Extension="json" ContentType="application/json"/>
   <Default Extension="js" ContentType="application/javascript"/>
   <Default Extension="md" ContentType="text/markdown"/>
+  <Default Extension="png" ContentType="image/png"/>
   <Default Extension="txt" ContentType="text/plain"/>
 </Types>`;
     fs.writeFileSync(path.join(tempBuildDir, '[Content_Types].xml'), contentTypesXml, { encoding: 'utf8', mode: 0o600 });
@@ -74,6 +75,7 @@ function buildVsix() {
     <Tags>${tags}</Tags>
     <Categories>Other</Categories>
     <GalleryFlags>Public</GalleryFlags>
+    <Icon>extension/icon.png</Icon>
     <License>extension/LICENSE</License>
   </Metadata>
   <Installation>
@@ -82,6 +84,7 @@ function buildVsix() {
   <Dependencies/>
   <Assets>
     <Asset Type="Microsoft.VisualStudio.Code.Manifest" Path="extension/package.json" Addressable="true"/>
+    <Asset Type="Microsoft.VisualStudio.Services.Icons.Default" Path="extension/icon.png" Addressable="true"/>
     <Asset Type="Microsoft.VisualStudio.Services.Content.Details" Path="extension/README.md" Addressable="true"/>
     <Asset Type="Microsoft.VisualStudio.Services.Content.License" Path="extension/LICENSE" Addressable="true"/>
   </Assets>
