@@ -1,7 +1,7 @@
 # 🪐 Orbit
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-1.0.0-blue.svg?style=flat-square" alt="Version 1.0.0" />
+  <img src="https://img.shields.io/badge/version-1.0.1-blue.svg?style=flat-square" alt="Version 1.0.1" />
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-brightgreen.svg?style=flat-square" alt="Platforms" />
   <img src="https://img.shields.io/badge/compatibility-Google%20Antigravity%20IDE%20%2F%20VS%20Code%20%5E1.80.0-purple.svg?style=flat-square" alt="Engines" />
   <img src="https://img.shields.io/badge/dependencies-zero%20(pure%20node)-orange.svg?style=flat-square" alt="Zero Dependencies" />
@@ -96,7 +96,7 @@ All custom profile files and settings are centrally isolated under your user hom
 │
 ├── WebDev/                             # Example: Web Development Profile
 │   ├── extensions/                     # Isolated extension storage
-│   │   └── sakib.antigravity-orbit-1.0.0/  # Auto-synced Orbit extension
+│   │   └── sajedulisakib-001.antigravity-orbit-1.0.1/  # Auto-synced Orbit extension
 │   └── user-data/                      # Isolated settings, keybindings & storage
 │
 └── PythonML/                           # Example: AI/ML Profile
@@ -117,17 +117,20 @@ antigravity-ide \
 
 ## 📦 Installation
 
-### Option A: Manual Installation (Recommended)
+### Option A: VS Marketplace Installation (Recommended)
+Search for **`Orbit - Antigravity Profiles`** (or `sajedulisakib-001.antigravity-orbit`) in the Extensions tab (<kbd>Cmd</kbd>/<kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>X</kbd>) and click **Install**.
+
+### Option B: Manual Installation
 1. Clone or copy the `antigravity-profiles` folder into your Antigravity IDE extensions directory:
    - **macOS / Linux**:
      ```bash
      mkdir -p ~/.antigravity-ide/extensions/
-     cp -r /path/to/antigravity-profiles ~/.antigravity-ide/extensions/sakib.antigravity-orbit-1.0.0
+     cp -r /path/to/antigravity-profiles ~/.antigravity-ide/extensions/sajedulisakib-001.antigravity-orbit-1.0.1
      ```
    - **Windows (PowerShell)**:
      ```powershell
      New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.antigravity-ide\extensions\"
-     Copy-Item -Recurse -Force "path\to\antigravity-profiles" "$env:USERPROFILE\.antigravity-ide\extensions\sakib.antigravity-orbit-1.0.0"
+     Copy-Item -Recurse -Force "path\to\antigravity-profiles" "$env:USERPROFILE\.antigravity-ide\extensions\sajedulisakib-001.antigravity-orbit-1.0.1"
      ```
 2. In Antigravity IDE, press <kbd>Cmd</kbd>/<kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>P</kbd> and run **`Developer: Reload Window`**.
 3. Look at the bottom-left status bar — you'll see **`$(globe) Orbit: Default`** ready to use!

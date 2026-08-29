@@ -14,7 +14,7 @@ function getProfilesRoot() {
 }
 
 /**
- * Resolves the destination folder name for copying this extension (e.g. sakib.antigravity-profile-manager-1.0.0).
+ * Resolves the destination folder name for copying this extension (e.g. sajedulisakib-001.antigravity-orbit-1.0.1).
  * Sanitizes input to prevent directory traversal or malformed paths.
  */
 function getExtensionFolderName(sourceExtPath) {
@@ -32,7 +32,7 @@ function getExtensionFolderName(sourceExtPath) {
             }
         }
     } catch (e) { }
-    return 'sakib.antigravity-orbit-1.0.0';
+    return 'sajedulisakib-001.antigravity-orbit-1.0.1';
 }
 
 module.exports = {
