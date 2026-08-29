@@ -1,0 +1,8 @@
+.vscode/**
+.vscode-test/**
+.git/**
+.gitignore
+.DS_Store
+*.vsix
+scripts/**
+build-vsix.js
