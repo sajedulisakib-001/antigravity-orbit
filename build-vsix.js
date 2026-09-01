@@ -98,7 +98,7 @@ function buildVsix() {
     }
 
     try {
-        execFileSync('/usr/bin/zip', ['-q', '-r', finalVsixPath, '.'], { cwd: tempBuildDir });
+        execFileSync('/usr/bin/zip', ['-q', '-r', '-X', finalVsixPath, '.'], { cwd: tempBuildDir });
         console.log(`\n🎉 SUCCESS! Generated official package: ${vsixName}`);
         console.log(`📍 Path: ${finalVsixPath}`);
         console.log(`📦 Size: ${(fs.statSync(finalVsixPath).size / 1024).toFixed(1)} KB\n`);

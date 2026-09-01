@@ -84,8 +84,8 @@ if (fs.existsSync(vsixOutputPath)) {
     fs.unlinkSync(vsixOutputPath);
 }
 
-// Zip archive using zip command
-execSync(`cd "${buildDir}" && /usr/bin/zip -q -r "${vsixOutputPath}" .`);
+// Zip archive using zip command (-X excludes extra attributes/harmful fields)
+execSync(`cd "${buildDir}" && /usr/bin/zip -q -r -X "${vsixOutputPath}" .`);
 
 // Cleanup staging directory
 fs.rmSync(buildDir, { recursive: true, force: true });

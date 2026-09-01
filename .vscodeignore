@@ -2,10 +2,12 @@
 .vscode-test/**
 .git/**
 .gitignore
+.env*
 .DS_Store
 *.vsix
 scripts/**
 build-vsix.js
+cmd.md
 *.log
 *.tmp
 .profiles*

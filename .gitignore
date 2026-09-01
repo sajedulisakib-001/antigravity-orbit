@@ -27,6 +27,7 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+cmd.md
 
 # IDE & Test Artefacts
 .vscode-test/

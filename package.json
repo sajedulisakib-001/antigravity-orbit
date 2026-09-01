@@ -10,7 +10,10 @@
     "url": "https://github.com/sajedulisakib-001/antigravity-orbit"
   },
   "scripts": {
-    "package": "npx @vscode/vsce package --no-dependencies"
+    "package": "npx @vscode/vsce package --no-dependencies",
+    "publish:all": "node ./scripts/publish-all.js",
+    "publish:vscode": "node ./scripts/publish-all.js --skip-ovsx",
+    "publish:ovsx": "node ./scripts/publish-all.js --skip-vscode"
   },
   "license": "MIT",
   "engines": {
