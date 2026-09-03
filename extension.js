@@ -1,13 +1,19 @@
 const vscode = require('vscode');
+const path = require('path');
 const { getProfilesRoot } = require('./src/constants');
-const { getProfilesRegistry, saveProfilesRegistry } = require('./src/registry');
+const { getProfilesRegistry, saveProfilesRegistry, findProfileKey } = require('./src/registry');
+const { syncExtensionToAllProfiles, getProfileLastWorkspaceFromStorage } = require('./src/fileSync');
 const {
     getCurrentProfile,
     getCurrentWorkspacePath,
     launchProfile,
     showProfileMenu,
-    promptCreateProfile
+    promptCreateProfile,
+    updateActiveProfileWorkspace
 } = require('./src/profileManager');
+const { validateWorkspacePath } = require('./src/launcher');
+
+let activeProfileName = 'Default';
 
 /**
  * Activates the Antigravity Profile Manager extension.
@@ -15,7 +21,14 @@ const {
  */
 async function activate(context) {
     const currentProfile = getCurrentProfile(context);
-    const { registryPath, registry } = getProfilesRegistry();
+    activeProfileName = currentProfile;
+    const { profilesRoot, registryPath, registry } = getProfilesRegistry();
+
+    // Ensure all custom profile directories have the latest Orbit extension and cleaned obsolete versions
+    const sourceExtPath = (context && context.extensionPath) ? context.extensionPath : path.resolve(__dirname);
+    try {
+        syncExtensionToAllProfiles(sourceExtPath, profilesRoot);
+    } catch (e) { }
 
     // Check if auto-restore is enabled (default: true)
     const orbitConfig = vscode.workspace.getConfiguration('antigravity-orbit');
@@ -25,24 +38,32 @@ async function activate(context) {
     // If starting in Default profile, check if we should seamlessly restore the last active custom profile
     if (currentProfile.toLowerCase() === 'default') {
         const lastActive = registry.lastActiveProfile;
-        if (autoRestore && lastActive && lastActive.toLowerCase() !== 'default' && registry.profiles[lastActive]) {
-            const wsPath = getCurrentWorkspacePath();
-            await launchProfile(lastActive, context, {
-                workspacePath: wsPath,
-                closeCurrent: true,
-                silent: true
-            });
-            return;
+        if (autoRestore && lastActive && lastActive.toLowerCase() !== 'default') {
+            const matchedKey = findProfileKey(registry, lastActive);
+            if (matchedKey && registry.profiles[matchedKey]) {
+                let savedWs = registry.profiles[matchedKey].lastWorkspacePath;
+                if (savedWs === undefined || savedWs === null) {
+                    savedWs = getProfileLastWorkspaceFromStorage(matchedKey, profilesRoot);
+                }
+                const validWs = validateWorkspacePath(savedWs);
+
+                await launchProfile(matchedKey, context, {
+                    workspacePath: validWs || undefined,
+                    closeCurrent: true,
+                    silent: true
+                });
+                return;
+            }
         }
     } else {
-        // Record this custom profile as the most recently active profile
-        if (registry.lastActiveProfile !== currentProfile) {
-            registry.lastActiveProfile = currentProfile;
-            if (registry.profiles[currentProfile]) {
-                registry.profiles[currentProfile].lastUsed = new Date().toISOString();
-            }
-            saveProfilesRegistry(registryPath, registry);
-        }
+        // Record this custom profile and its current workspace
+        updateActiveProfileWorkspace(currentProfile);
+
+        // Listen for workspace folder changes in real-time (e.g. folder opened, changed, or closed)
+        const wsWatcher = vscode.workspace.onDidChangeWorkspaceFolders(() => {
+            updateActiveProfileWorkspace(currentProfile);
+        });
+        context.subscriptions.push(wsWatcher);
     }
 
     // 1. Register contributed commands (with legacy alias support)
@@ -76,7 +97,13 @@ async function activate(context) {
     context.subscriptions.push(profileStatusBarItem);
 }
 
-function deactivate() { }
+function deactivate() {
+    if (activeProfileName && activeProfileName.toLowerCase() !== 'default') {
+        try {
+            updateActiveProfileWorkspace(activeProfileName);
+        } catch (e) { }
+    }
+}
 
 module.exports = {
     activate,

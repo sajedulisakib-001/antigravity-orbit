@@ -4,9 +4,9 @@ const fs = require('fs');
 
 const { getProfilesRoot, getExtensionFolderName } = require('./constants');
 const { sanitizeProfileName } = require('./sanitizer');
-const { getProfilesRegistry, saveProfilesRegistry } = require('./registry');
-const { copyDirRecursiveSync } = require('./fileSync');
-const { launchAntigravityInstance } = require('./launcher');
+const { getProfilesRegistry, saveProfilesRegistry, findProfileKey } = require('./registry');
+const { copyDirRecursiveSync, syncExtensionToProfile } = require('./fileSync');
+const { launchAntigravityInstance, validateWorkspacePath } = require('./launcher');
 
 /**
  * Detects the active profile name of the currently running Antigravity IDE window.
@@ -56,6 +56,37 @@ function getCurrentWorkspacePath() {
         return folders[0].uri.fsPath;
     }
     return undefined;
+}
+
+/**
+ * Updates and persists the current workspace path for the active custom profile.
+ * If no workspace folder is open, sets lastWorkspacePath to null.
+ *
+ * @param {string} profileName
+ */
+function updateActiveProfileWorkspace(profileName) {
+    if (!profileName || typeof profileName !== 'string' || profileName.toLowerCase() === 'default') {
+        return;
+    }
+    try {
+        const { registryPath, registry } = getProfilesRegistry();
+        const matchedKey = findProfileKey(registry, profileName) || sanitizeProfileName(profileName);
+        if (!matchedKey) return;
+
+        const currentWs = getCurrentWorkspacePath();
+        const safeWs = validateWorkspacePath(currentWs);
+
+        if (registry.profiles[matchedKey]) {
+            const previousWs = registry.profiles[matchedKey].lastWorkspacePath;
+            const newWs = safeWs || null;
+            if (previousWs !== newWs || registry.lastActiveProfile !== matchedKey) {
+                registry.profiles[matchedKey].lastWorkspacePath = newWs;
+                registry.profiles[matchedKey].lastUsed = new Date().toISOString();
+                registry.lastActiveProfile = matchedKey;
+                saveProfilesRegistry(registryPath, registry);
+            }
+        }
+    } catch (e) { }
 }
 
 /**
@@ -118,21 +149,24 @@ async function launchProfile(profileName, context, { workspacePath, closeCurrent
         fs.mkdirSync(customExtDir, { recursive: true, mode: 0o700 });
         fs.mkdirSync(customDataDir, { recursive: true, mode: 0o700 });
 
-        // Copy extension into target profile's extensions directory so profile manager is always available
+        // Copy and synchronize extension into target profile, cleaning obsolete versions and updating extensions.json
         const sourceExtPath = (context && context.extensionPath) ? context.extensionPath : path.resolve(__dirname, '..');
-        const folderName = getExtensionFolderName(sourceExtPath);
-        const targetExtFolder = path.join(customExtDir, folderName);
-        copyDirRecursiveSync(sourceExtPath, targetExtFolder);
+        syncExtensionToProfile(sourceExtPath, customExtDir);
 
         // Update central registry
+        const validatedWs = validateWorkspacePath(workspacePath);
         if (!registry.profiles[safeName]) {
             registry.profiles[safeName] = {
                 name: profileName.trim().slice(0, 100),
                 createdAt: new Date().toISOString(),
-                lastUsed: new Date().toISOString()
+                lastUsed: new Date().toISOString(),
+                lastWorkspacePath: validatedWs || null
             };
         } else {
             registry.profiles[safeName].lastUsed = new Date().toISOString();
+            if (workspacePath !== undefined) {
+                registry.profiles[safeName].lastWorkspacePath = validatedWs || null;
+            }
         }
         registry.lastActiveProfile = safeName;
         saveProfilesRegistry(registryPath, registry);
@@ -459,5 +493,6 @@ module.exports = {
     promptCreateProfile,
     promptProfileActions,
     showDeleteProfileMenu,
-    showProfileMenu
+    showProfileMenu,
+    updateActiveProfileWorkspace
 };

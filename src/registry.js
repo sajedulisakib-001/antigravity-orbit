@@ -2,6 +2,23 @@ const path = require('path');
 const fs = require('fs');
 const { getProfilesRoot } = require('./constants');
 const { sanitizeProfileName } = require('./sanitizer');
+const { getProfileLastWorkspaceFromStorage } = require('./fileSync');
+
+/**
+ * Finds the matching profile key in the registry in a case-insensitive manner.
+ * @param {object} registry
+ * @param {string} profileName
+ * @returns {string|null}
+ */
+function findProfileKey(registry, profileName) {
+    if (!registry || !registry.profiles || typeof profileName !== 'string') return null;
+    if (registry.profiles[profileName]) return profileName;
+    const lower = profileName.toLowerCase();
+    for (const key of Object.keys(registry.profiles)) {
+        if (key.toLowerCase() === lower) return key;
+    }
+    return null;
+}
 
 /**
  * Reads the central profiles registry safely, guarding against prototype pollution
@@ -37,10 +54,21 @@ function getProfilesRegistry() {
                         const entry = raw.profiles[key];
                         if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
                             const rawName = typeof entry.name === 'string' ? entry.name.slice(0, 100).replace(/[\x00-\x1F\x7F]/g, '') : safeKey;
+                            let lastWorkspace = null;
+                            if (typeof entry.lastWorkspacePath === 'string') {
+                                const trimmedWs = entry.lastWorkspacePath.trim().replace(/[\x00-\x1F\x7F]/g, '');
+                                if (trimmedWs && !trimmedWs.startsWith('-') && trimmedWs.length <= 4096) {
+                                    lastWorkspace = trimmedWs;
+                                }
+                            } else if (entry.lastWorkspacePath === undefined) {
+                                // Fallback: detect workspace from profile user-data storage if not previously recorded
+                                lastWorkspace = getProfileLastWorkspaceFromStorage(safeKey, profilesRoot);
+                            }
                             cleanProfiles[safeKey] = {
                                 name: rawName.trim() || safeKey,
                                 createdAt: typeof entry.createdAt === 'string' ? entry.createdAt : new Date().toISOString(),
-                                lastUsed: typeof entry.lastUsed === 'string' ? entry.lastUsed : new Date().toISOString()
+                                lastUsed: typeof entry.lastUsed === 'string' ? entry.lastUsed : new Date().toISOString(),
+                                lastWorkspacePath: lastWorkspace
                             };
                         }
                     }
@@ -58,19 +86,26 @@ function getProfilesRegistry() {
             if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') {
                 const safeName = sanitizeProfileName(entry.name);
                 if (safeName && !cleanProfiles[safeName]) {
+                    const detectedWs = getProfileLastWorkspaceFromStorage(safeName, profilesRoot);
                     cleanProfiles[safeName] = {
                         name: safeName,
                         createdAt: new Date().toISOString(),
-                        lastUsed: new Date().toISOString()
+                        lastUsed: new Date().toISOString(),
+                        lastWorkspacePath: detectedWs
                     };
                 }
             }
         }
     } catch (e) { }
 
-    // If lastActiveProfile is not Default and does not exist in discovered profiles, fall back to Default
-    if (lastActiveProfile !== 'Default' && !cleanProfiles[lastActiveProfile]) {
-        lastActiveProfile = 'Default';
+    // If lastActiveProfile is not Default and does not exist in discovered profiles, match case-insensitively or fall back to Default
+    if (lastActiveProfile !== 'Default') {
+        const matchedKey = findProfileKey({ profiles: cleanProfiles }, lastActiveProfile);
+        if (matchedKey) {
+            lastActiveProfile = matchedKey;
+        } else {
+            lastActiveProfile = 'Default';
+        }
     }
 
     return {
@@ -99,18 +134,33 @@ function saveProfilesRegistry(registryPath, registry) {
             const item = registry.profiles[key];
             if (item && typeof item === 'object' && !Array.isArray(item)) {
                 const rawName = typeof item.name === 'string' ? item.name.slice(0, 100).replace(/[\x00-\x1F\x7F]/g, '') : safeKey;
+                let lastWorkspace = null;
+                if (typeof item.lastWorkspacePath === 'string') {
+                    const trimmedWs = item.lastWorkspacePath.trim().replace(/[\x00-\x1F\x7F]/g, '');
+                    if (trimmedWs && !trimmedWs.startsWith('-') && trimmedWs.length <= 4096) {
+                        lastWorkspace = trimmedWs;
+                    }
+                }
                 cleanObject[safeKey] = {
                     name: rawName.trim() || safeKey,
                     createdAt: item.createdAt || new Date().toISOString(),
-                    lastUsed: item.lastUsed || new Date().toISOString()
+                    lastUsed: item.lastUsed || new Date().toISOString(),
+                    lastWorkspacePath: lastWorkspace
                 };
             }
         }
     }
 
-    const lastActive = (typeof registry.lastActiveProfile === 'string' && registry.lastActiveProfile.trim())
-        ? (registry.lastActiveProfile.toLowerCase() === 'default' ? 'Default' : (sanitizeProfileName(registry.lastActiveProfile) || 'Default'))
-        : 'Default';
+    let lastActive = 'Default';
+    if (typeof registry.lastActiveProfile === 'string' && registry.lastActiveProfile.trim()) {
+        const trimmed = registry.lastActiveProfile.trim();
+        if (trimmed.toLowerCase() === 'default') {
+            lastActive = 'Default';
+        } else {
+            const matchedKey = findProfileKey({ profiles: cleanObject }, trimmed);
+            lastActive = matchedKey || sanitizeProfileName(trimmed) || 'Default';
+        }
+    }
 
     const payload = JSON.stringify({
         lastActiveProfile: lastActive,
@@ -138,5 +188,6 @@ function saveProfilesRegistry(registryPath, registry) {
 
 module.exports = {
     getProfilesRegistry,
-    saveProfilesRegistry
+    saveProfilesRegistry,
+    findProfileKey
 };
