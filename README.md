@@ -6,11 +6,20 @@
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-brightgreen.svg?style=flat-square" alt="Platforms" />
   <img src="https://img.shields.io/badge/compatibility-Google%20Antigravity%20IDE%20%2F%20VS%20Code%20%5E1.80.0-purple.svg?style=flat-square" alt="Engines" />
   <img src="https://img.shields.io/badge/dependencies-zero%20(pure%20node)-orange.svg?style=flat-square" alt="Zero Dependencies" />
+  <a href="#contributing"><img src="https://img.shields.io/badge/contributions-welcome-orange.svg?style=flat-square" alt="Contributions Welcome" /></a>
   <img src="https://img.shields.io/badge/license-MIT-green.svg?style=flat-square" alt="License" />
 </p>
 
 <p align="center">
   <b>Switch orbits in a single click.</b> Seamless, isolated developer profiles and sandboxed workspaces for <b>Google Antigravity IDE</b>.
+</p>
+
+<p align="center">
+  <i>🚀 <b>200+ downloads in the first 48 hours!</b> We're actively looking for platform-specific contributors to help optimize performance and squash OS-specific bugs.</i>
+  <br/><br/>
+  <a href="#contributing">
+    <img src="https://img.shields.io/badge/🤝_Contributors_Wanted-Join_Platform_Maintainers_→-ff5722?style=for-the-badge&logo=github&logoColor=white" alt="Contributors Wanted" />
+  </a>
 </p>
 
 ---
@@ -190,6 +199,7 @@ flowchart TD
 
 ---
 
+<a id="contributing"></a>
 ## 🤝 Contributing & Platform Maintainers Wanted!
 
 > [!NOTE]
