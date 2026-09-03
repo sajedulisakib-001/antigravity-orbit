@@ -40,6 +40,7 @@ By default, modern code editors share global extensions and settings across all 
 - **⚡ 1-Click Orbit Switcher**: Instantly switch profiles from the persistent bottom-left status bar item (`$(globe) Orbit: <Active>`) or Command Palette.
 - **🔄 Seamless Auto-Restore on Launch**: When you open Antigravity IDE, Orbit automatically and silently restores your last used profile without extra clicks, delay, or UI flicker.
 - **📦 100% Sandboxed Isolation**: Each profile possesses dedicated `--extensions-dir` and `--user-data-dir` stores. Settings, keymaps, global state, caches, and installed extensions never collide.
+- **✨ Universal Extensions Engine**: Mark any installed extension from your current profile as "Universal" in the Orbit Dashboard. Universal extensions are centrally pooled and automatically cloned into every newly created profile while keeping your existing profiles 100% clean and isolated.
 - **🔄 Auto Self-Propagating Engine**: When initializing or launching any profile, Orbit automatically synchronizes itself into the target profile's extension repository. You are never trapped inside a sub-profile without management controls!
 - **🔀 Flexible Window Management**:
   - **🔄 Switch Orbit**: Seamlessly migrates your currently open workspace or project folder to the target profile and cleanly closes the previous window.
@@ -83,6 +84,12 @@ By default, modern code editors share global extensions and settings across all 
 | Setting | Type | Default | Description |
 |---|---|---|---|
 | `antigravity-orbit.autoRestoreLastProfile` | `boolean` | `true` | When `true`, automatically and seamlessly launches your last active orbit profile on IDE startup instead of the Default profile. |
+| `antigravity-orbit.defaultLaunchMode` | `string` | `"prompt"` | Default action when selecting a profile: `"prompt"` (ask each time), `"switch"` (migrate workspace & close window), or `"new_window"` (open isolated window). |
+| `antigravity-orbit.confirmDelete` | `boolean` | `true` | When `true`, displays a confirmation modal before permanently deleting custom profile folders on disk. |
+| `antigravity-orbit.showStatusBarItem` | `boolean` | `true` | Displays the active orbit profile status bar indicator. |
+| `antigravity-orbit.statusBarAlignment` | `string` | `"Left"` | Alignment position for the status bar indicator (`"Left"` or `"Right"`). |
+| `antigravity-orbit.autoSyncExtension` | `boolean` | `true` | When `true`, automatically copies and updates the Orbit extension inside all custom profiles on startup. |
+| `antigravity-orbit.closeAfterSwitch` | `boolean` | `true` | When `true`, automatically closes the previous window when switching profiles in switch mode. |
 
 ---
 
@@ -93,6 +100,7 @@ By default, modern code editors share global extensions and settings across all 
 | **Orbit: Switch Profile** | `antigravity-orbit.switch` | Opens the QuickPick menu showing active orbit, available profiles, and management options. |
 | **Orbit: Create New Profile** | `antigravity-orbit.create` | Prompts for a profile name and launches the new isolated environment immediately. |
 | **Orbit: Open Profiles Folder** | `antigravity-orbit.openFolder` | Opens the central profiles directory (`~/.antigravity-custom-profiles`) in Finder / File Explorer. |
+| **Orbit: Open Settings & Dashboard** | `antigravity-orbit.openSettings` | Opens the interactive visual Settings & Dashboard webview page. |
 
 ---
 
@@ -103,10 +111,13 @@ All custom profile files and settings are centrally isolated under your user hom
 ```text
 ~/.antigravity-custom-profiles/
 ├── profiles.json                       # Central shared metadata registry (atomic writes, 0600)
+├── .universal-extensions/              # Central pool of extensions auto-cloned to new profiles
+│   └── esbenp.prettier-vscode-10.1.0/  # Example: Universal extension
 │
 ├── WebDev/                             # Example: Web Development Profile
 │   ├── extensions/                     # Isolated extension storage
-│   │   └── sajedulisakib-001.antigravity-orbit-1.0.2/  # Auto-synced Orbit extension
+│   │   ├── sajedulisakib-001.antigravity-orbit-1.0.5/  # Auto-synced Orbit extension
+│   │   └── esbenp.prettier-vscode-10.1.0/              # Cloned universal extension
 │   └── user-data/                      # Isolated settings, keybindings & storage
 │
 └── PythonML/                           # Example: AI/ML Profile

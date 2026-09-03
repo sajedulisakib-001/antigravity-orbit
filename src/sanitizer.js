@@ -73,7 +73,8 @@ const MAX_PROFILE_NAME_LENGTH = 48;
  */
 function sanitizeProfileName(input) {
     if (!input || typeof input !== 'string') return null;
-    const trimmed = input.trim();
+    const cleanChars = input.replace(/[\x00-\x1F\x7F]/g, '');
+    const trimmed = cleanChars.trim();
     if (!trimmed) return null;
 
     // Enforce length limit
@@ -110,8 +111,33 @@ function sanitizeProfileName(input) {
     return safe;
 }
 
+/**
+ * Sanitizes an extension identifier (e.g. 'esbenp.prettier-vscode', 'ms-python.python').
+ * @param {string} input
+ * @returns {string|null}
+ */
+function sanitizeExtensionId(input) {
+    if (!input || typeof input !== 'string') return null;
+    const cleanChars = input.replace(/[\x00-\x1F\x7F]/g, '');
+    const trimmed = cleanChars.trim();
+    if (!trimmed || trimmed.length > 128) return null;
+
+    const lower = trimmed.toLowerCase();
+    if (RESERVED_NAMES.has(lower) || lower.includes('..') || lower.includes('/') || lower.includes('\\')) {
+        return null;
+    }
+
+    // Must be alphanumeric, dots, dashes, underscores
+    if (!/^[a-z0-9][a-z0-9._-]*$/i.test(trimmed)) {
+        return null;
+    }
+
+    return trimmed;
+}
+
 module.exports = {
     sanitizeProfileName,
+    sanitizeExtensionId,
     RESERVED_NAMES,
     MAX_PROFILE_NAME_LENGTH
 };

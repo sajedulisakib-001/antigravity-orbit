@@ -53,6 +53,11 @@
         "command": "antigravity-orbit.openFolder",
         "title": "Orbit: Open Profiles Folder",
         "category": "Orbit"
+      },
+      {
+        "command": "antigravity-orbit.openSettings",
+        "title": "Orbit: Open Settings & Dashboard",
+        "category": "Orbit"
       }
     ],
     "configuration": {
@@ -62,6 +67,50 @@
           "type": "boolean",
           "default": true,
           "description": "Automatically restore and open the last active orbit profile when launching Antigravity IDE."
+        },
+        "antigravity-orbit.defaultLaunchMode": {
+          "type": "string",
+          "enum": [
+            "prompt",
+            "switch",
+            "new_window"
+          ],
+          "enumDescriptions": [
+            "Always ask whether to switch in-place or open in a new window.",
+            "Always switch in-place (transfer current workspace and close window).",
+            "Always launch an isolated new window alongside the current session."
+          ],
+          "default": "prompt",
+          "description": "Default action when selecting or launching a profile."
+        },
+        "antigravity-orbit.confirmDelete": {
+          "type": "boolean",
+          "default": true,
+          "description": "Prompt for confirmation before permanently deleting custom profiles."
+        },
+        "antigravity-orbit.showStatusBarItem": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the active Orbit profile indicator in the bottom status bar."
+        },
+        "antigravity-orbit.statusBarAlignment": {
+          "type": "string",
+          "enum": [
+            "Left",
+            "Right"
+          ],
+          "default": "Left",
+          "description": "Alignment position of the Orbit status bar indicator."
+        },
+        "antigravity-orbit.autoSyncExtension": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically synchronize and propagate the Orbit extension to all custom profiles on startup."
+        },
+        "antigravity-orbit.closeAfterSwitch": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically close the current window when switching profiles in switch mode."
         }
       }
     }

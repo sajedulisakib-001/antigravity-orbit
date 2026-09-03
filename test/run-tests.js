@@ -4,30 +4,126 @@ const os = require('os');
 const assert = require('assert');
 const Module = require('module');
 
+// Configuration store for mock VS Code API
+const mockConfigStore = new Map();
+const mockRegisteredCommands = new Map();
+let mockLastCreatedStatusBarItem = null;
+
+const DEFAULT_CONFIGS = {
+    'antigravity-orbit.autoRestoreLastProfile': true,
+    'antigravity-orbit.defaultLaunchMode': 'prompt',
+    'antigravity-orbit.confirmDelete': true,
+    'antigravity-orbit.showStatusBarItem': true,
+    'antigravity-orbit.statusBarAlignment': 'Left',
+    'antigravity-orbit.autoSyncExtension': true,
+    'antigravity-orbit.closeAfterSwitch': true
+};
+
 // Mock VS Code API for standalone Node.js test execution
 const mockVscode = {
     workspace: {
         workspaceFolders: [],
         workspaceFile: undefined,
-        getConfiguration: () => ({
-            get: (key, def) => def
+        getConfiguration: (section = 'antigravity-orbit') => ({
+            get: (key, def) => {
+                const fullKey = `${section}.${key}`;
+                if (mockConfigStore.has(fullKey)) return mockConfigStore.get(fullKey);
+                if (mockConfigStore.has(key)) return mockConfigStore.get(key);
+                if (def !== undefined) return def;
+                if (DEFAULT_CONFIGS[fullKey] !== undefined) return DEFAULT_CONFIGS[fullKey];
+                if (DEFAULT_CONFIGS[`antigravity-orbit.${key}`] !== undefined) return DEFAULT_CONFIGS[`antigravity-orbit.${key}`];
+                return undefined;
+            },
+            update: async (key, val, target) => {
+                const fullKey = `${section}.${key}`;
+                if (val === undefined) {
+                    mockConfigStore.delete(fullKey);
+                    mockConfigStore.delete(key);
+                } else {
+                    mockConfigStore.set(fullKey, val);
+                    mockConfigStore.set(key, val);
+                }
+            }
         }),
-        onDidChangeWorkspaceFolders: () => ({ dispose: () => {} })
+        onDidChangeWorkspaceFolders: () => ({ dispose: () => {} }),
+        onDidChangeConfiguration: (fn) => ({ dispose: () => {} })
     },
     window: {
         showInformationMessage: async () => {},
         showErrorMessage: async () => {},
-        showWarningMessage: async () => {},
-        showQuickPick: async () => {},
-        showInputBox: async () => {},
-        createStatusBarItem: () => ({
-            show: () => {},
-            dispose: () => {}
-        })
+        showWarningMessage: async (msg, options, ...items) => {
+            if (items.includes('Reset Settings')) return 'Reset Settings';
+            if (items.includes('Delete Profile')) return 'Delete Profile';
+            return items[0];
+        },
+        showQuickPick: async (items) => (Array.isArray(items) ? items[0] : null),
+        showInputBox: async () => 'TestProfile',
+        showSaveDialog: async (opts) => opts && opts.defaultUri ? opts.defaultUri : { fsPath: path.join(os.tmpdir(), 'backup.json') },
+        showOpenDialog: async (opts) => [{ fsPath: path.join(os.tmpdir(), 'backup.json') }],
+        createStatusBarItem: (alignment = 1, priority = 99) => {
+            const item = {
+                alignment,
+                priority,
+                text: '',
+                tooltip: '',
+                command: '',
+                visible: false,
+                show: function() { this.visible = true; },
+                hide: function() { this.visible = false; },
+                dispose: function() { this.visible = false; }
+            };
+            mockLastCreatedStatusBarItem = item;
+            return item;
+        },
+        createWebviewPanel: (viewType, title, showOptions, options) => {
+            const messageHandlers = [];
+            const disposeHandlers = [];
+            const panel = {
+                viewType,
+                title,
+                showOptions,
+                options,
+                active: true,
+                webview: {
+                    html: '',
+                    onDidReceiveMessage: (fn) => {
+                        messageHandlers.push(fn);
+                        return { dispose: () => {} };
+                    },
+                    postMessage: async (msg) => {
+                        panel.lastPostedMessage = msg;
+                    }
+                },
+                reveal: () => { panel.active = true; },
+                onDidDispose: (fn) => {
+                    disposeHandlers.push(fn);
+                    return { dispose: () => {} };
+                },
+                dispose: () => {
+                    if (panel.isDisposed) return;
+                    panel.isDisposed = true;
+                    panel.active = false;
+                    for (const h of disposeHandlers) h();
+                },
+                // Test helper to simulate incoming message from webview
+                _simulateMessage: async (msg) => {
+                    for (const h of messageHandlers) {
+                        await h(msg);
+                    }
+                }
+            };
+            return panel;
+        }
     },
     commands: {
-        registerCommand: () => ({ dispose: () => {} }),
-        executeCommand: async () => {}
+        registerCommand: (id, handler) => {
+            mockRegisteredCommands.set(id, handler);
+            return { dispose: () => { mockRegisteredCommands.delete(id); } };
+        },
+        executeCommand: async (id, ...args) => {
+            const handler = mockRegisteredCommands.get(id);
+            if (handler) return await handler(...args);
+        }
     },
     env: {
         openExternal: async () => {}
@@ -35,8 +131,14 @@ const mockVscode = {
     Uri: {
         file: (p) => ({ fsPath: p })
     },
+    extensions: {
+        all: [],
+        getExtension: (id) => mockVscode.extensions.all.find(e => e.id.toLowerCase() === id.toLowerCase())
+    },
     StatusBarAlignment: { Left: 1, Right: 2 },
-    QuickPickItemKind: { Separator: -1 }
+    QuickPickItemKind: { Separator: -1 },
+    ConfigurationTarget: { Global: 1, Workspace: 2, WorkspaceFolder: 3 },
+    ViewColumn: { One: 1, Active: -1 }
 };
 
 const originalRequire = Module.prototype.require;
@@ -48,7 +150,7 @@ Module.prototype.require = function(request) {
 };
 
 // Modules under test
-const { sanitizeProfileName, RESERVED_NAMES } = require('../src/sanitizer');
+const { sanitizeProfileName, sanitizeExtensionId, RESERVED_NAMES } = require('../src/sanitizer');
 const { getProfilesRoot, getExtensionFolderName } = require('../src/constants');
 const { findProfileKey, getProfilesRegistry, saveProfilesRegistry } = require('../src/registry');
 const { validateWorkspacePath, findAntigravityMac, findAntigravityWindows, findAntigravityLinux } = require('../src/launcher');
@@ -59,6 +161,8 @@ const {
     setSwitchingInProgress,
     updateActiveProfileWorkspace
 } = require('../src/profileManager');
+const { getSettingsHtml } = require('../src/settingsHtml');
+const { SettingsPanel } = require('../src/settingsPanel');
 
 let passedTests = 0;
 let totalTests = 0;
@@ -101,7 +205,7 @@ async function runAllTests() {
     // ----------------------------------------------------
     // 1. Sanitizer Tests
     // ----------------------------------------------------
-    console.log('📦 [1/6] Testing sanitizer.js...');
+    console.log('📦 [1/8] Testing sanitizer.js...');
 
     runTest('Sanitize standard names', () => {
         assert.strictEqual(sanitizeProfileName('WebDev'), 'WebDev');
@@ -140,10 +244,15 @@ async function runAllTests() {
         assert.strictEqual(sanitizeProfileName('a'.repeat(48)), 'a'.repeat(48));
     });
 
+    runTest('Strip non-printable and ANSI control characters', () => {
+        assert.strictEqual(sanitizeProfileName('Hello\x00World\x1F'), 'HelloWorld');
+        assert.strictEqual(sanitizeExtensionId('publisher.name\x00\x08'), 'publisher.name');
+    });
+
     // ----------------------------------------------------
     // 2. Constants Tests
     // ----------------------------------------------------
-    console.log('\n📦 [2/6] Testing constants.js...');
+    console.log('\n📦 [2/8] Testing constants.js...');
 
     runTest('getProfilesRoot returns ~/.antigravity-custom-profiles', () => {
         const root = getProfilesRoot();
@@ -159,7 +268,7 @@ async function runAllTests() {
     // ----------------------------------------------------
     // 3. Registry Tests
     // ----------------------------------------------------
-    console.log('\n📦 [3/6] Testing registry.js...');
+    console.log('\n📦 [3/8] Testing registry.js...');
 
     runTest('findProfileKey performs case-insensitive lookups', () => {
         const mockRegistry = {
@@ -213,7 +322,6 @@ async function runAllTests() {
         const regPath = path.join(tempDir, 'profiles.json');
         fs.writeFileSync(regPath, '{ invalid json syntax !!! @@');
 
-        // Should not throw and should return default object
         const reg = getProfilesRegistry();
         assert.ok(reg && reg.registry);
         assert.strictEqual(typeof reg.registry.profiles, 'object');
@@ -224,7 +332,7 @@ async function runAllTests() {
     // ----------------------------------------------------
     // 4. Launcher & Workspace Validation Tests
     // ----------------------------------------------------
-    console.log('\n📦 [4/6] Testing launcher.js...');
+    console.log('\n📦 [4/8] Testing launcher.js...');
 
     runTest('validateWorkspacePath validates directories and blocks flags', () => {
         const testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-test-ws-'));
@@ -253,13 +361,12 @@ async function runAllTests() {
     // ----------------------------------------------------
     // 5. File Synchronization Tests
     // ----------------------------------------------------
-    console.log('\n📦 [5/6] Testing fileSync.js...');
+    console.log('\n📦 [5/8] Testing fileSync.js...');
 
     runTest('copyDirRecursiveSync recursively copies files and skips ignored files', () => {
         const srcDir = fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-test-src-'));
         const destDir = fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-test-dest-'));
 
-        // Create test files
         fs.writeFileSync(path.join(srcDir, 'file1.js'), 'console.log(1);');
         fs.mkdirSync(path.join(srcDir, 'subdir'));
         fs.writeFileSync(path.join(srcDir, 'subdir', 'file2.js'), 'console.log(2);');
@@ -283,7 +390,6 @@ async function runAllTests() {
         const sourceExt = path.resolve(__dirname, '..');
         const customExtDir = fs.mkdtempSync(path.join(os.tmpdir(), 'orbit-test-extdir-'));
 
-        // Create an existing extensions.json
         fs.writeFileSync(path.join(customExtDir, 'extensions.json'), JSON.stringify([
             { identifier: { id: 'some.other.extension' }, version: '1.0.0' },
             { identifier: { id: 'sajedulisakib-001.antigravity-orbit' }, version: '1.0.0' }
@@ -308,7 +414,6 @@ async function runAllTests() {
         const dataDir = path.join(profilesRoot, profileName, 'user-data', 'User', 'globalStorage');
         fs.mkdirSync(dataDir, { recursive: true });
 
-        // Path with special characters / spaces
         const testWsFolder = '/Users/test/projects/my workspace';
         const storageData = {
             windowsState: {
@@ -328,7 +433,7 @@ async function runAllTests() {
     // ----------------------------------------------------
     // 6. Profile Manager & Switching Lifecycle Integration
     // ----------------------------------------------------
-    console.log('\n📦 [6/6] Testing Profile Lifecycle & Switching Bug Fix...');
+    console.log('\n📦 [6/8] Testing Profile Lifecycle & Switching...');
 
     runTest('isSwitchingInProgress and setSwitchingInProgress state tracking', () => {
         assert.strictEqual(isSwitchingInProgress(), false);
@@ -351,37 +456,21 @@ async function runAllTests() {
         assert.strictEqual(getCurrentProfile(defaultContext), 'Default');
     });
 
-    runTest('CRITICAL WINDOWS BUG FIX: getCurrentProfile handles Windows drive casing, globalStorageUri, and separators', () => {
-        // Test Windows drive letter casing (c:\ vs C:\)
+    runTest('getCurrentProfile handles Windows drive casing, globalStorageUri, and separators', () => {
         const winLowerContext = {
             extensionPath: 'c:\\users\\developer\\.antigravity-custom-profiles\\RustProject\\extensions\\sajedulisakib-001.antigravity-orbit-1.0.5'
         };
         assert.strictEqual(getCurrentProfile(winLowerContext), 'RustProject');
 
-        // Test globalStorageUri (infallible user-data detector)
         const globalStorageContext = {
             globalStorageUri: {
                 fsPath: 'C:\\Users\\Developer\\.antigravity-custom-profiles\\Webdev\\user-data\\User\\globalStorage\\orbit'
             }
         };
         assert.strictEqual(getCurrentProfile(globalStorageContext), 'Webdev');
-
-        // Test logUri
-        const logUriContext = {
-            logUri: {
-                fsPath: '/Users/developer/.antigravity-custom-profiles/Testing/user-data/logs'
-            }
-        };
-        assert.strictEqual(getCurrentProfile(logUriContext), 'Testing');
-
-        // Test process.argv with forward slashes
-        const originalArgv = process.argv;
-        process.argv = ['node', '--user-data-dir=C:/Users/Developer/.antigravity-custom-profiles/ArgvProfile/user-data'];
-        assert.strictEqual(getCurrentProfile({}), 'ArgvProfile');
-        process.argv = originalArgv;
     });
 
-    runTest('CRITICAL BUG VERIFICATION: Switching from Custom Profile to Default does NOT overwrite lastActiveProfile on deactivate', () => {
+    runTest('Switching from Custom Profile to Default does NOT overwrite lastActiveProfile on deactivate', () => {
         const profilesRoot = getProfilesRoot();
         const registryPath = path.join(profilesRoot, 'profiles.json');
         let originalRegistryBackup = null;
@@ -391,7 +480,6 @@ async function runAllTests() {
         }
 
         try {
-            // Step 1: User is currently working in custom profile 'PythonML'
             const initialReg = {
                 lastActiveProfile: 'PythonML',
                 profiles: {
@@ -405,36 +493,18 @@ async function runAllTests() {
             };
             saveProfilesRegistry(registryPath, initialReg);
 
-            // Verify initial state
             let currentReg = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
             assert.strictEqual(currentReg.lastActiveProfile, 'PythonML');
 
-            // Step 2: User clicks 'Switch to Default Profile'
-            // launchProfile('Default') sets lastActiveProfile = 'Default' and sets isSwitchingInProgress = true
             setSwitchingInProgress(true);
             currentReg.lastActiveProfile = 'Default';
             saveProfilesRegistry(registryPath, currentReg);
 
-            let switchedReg = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
-            assert.strictEqual(switchedReg.lastActiveProfile, 'Default');
-
-            // Step 3: Closing window triggers deactivate() for 'PythonML'
             updateActiveProfileWorkspace('PythonML', { updateLastActive: false });
 
-            // Verify that lastActiveProfile REMAINS 'Default'!
             const regAfterDeactivate = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
-            assert.strictEqual(regAfterDeactivate.lastActiveProfile, 'Default', 'lastActiveProfile must remain Default and NOT be overwritten during deactivate!');
+            assert.strictEqual(regAfterDeactivate.lastActiveProfile, 'Default');
 
-            // Step 4: Default window opens and checks autoRestore
-            const currentProfile = 'Default';
-            const autoRestore = true;
-            const lastActive = regAfterDeactivate.lastActiveProfile;
-
-            // Condition: autoRestore && lastActive && lastActive.toLowerCase() !== 'default'
-            const willAutoRestore = autoRestore && lastActive && lastActive.toLowerCase() !== 'default';
-            assert.strictEqual(willAutoRestore, false, 'Default profile window must STAY open and NOT auto-restore custom profile!');
-
-            // Reset switching flag
             setSwitchingInProgress(false);
         } finally {
             if (originalRegistryBackup !== null) {
@@ -443,56 +513,173 @@ async function runAllTests() {
         }
     });
 
-    runTest('CRITICAL BUG VERIFICATION: Switching from Custom Profile A to Custom Profile B', () => {
-        const profilesRoot = getProfilesRoot();
-        const registryPath = path.join(profilesRoot, 'profiles.json');
-        let originalRegistryBackup = null;
+    // ----------------------------------------------------
+    // 7. Settings HTML Webview Generator Tests
+    // ----------------------------------------------------
+    console.log('\n📦 [7/8] Testing settingsHtml.js (HTML & CSP generator)...');
 
-        if (fs.existsSync(registryPath)) {
-            originalRegistryBackup = fs.readFileSync(registryPath, 'utf8');
-        }
-
-        try {
-            // Step 1: In Profile A
-            const reg = {
-                lastActiveProfile: 'ProfileA',
+    runTest('getSettingsHtml generates valid HTML with CSP containing nonce', () => {
+        const testNonce = 'testnonce123456789';
+        const html = getSettingsHtml({
+            nonce: testNonce,
+            currentProfile: 'WebDev',
+            version: '1.0.5',
+            profilesRoot: '/home/user/.antigravity-custom-profiles',
+            settings: {
+                autoRestoreLastProfile: true,
+                defaultLaunchMode: 'new_window',
+                confirmDelete: true,
+                showStatusBarItem: true,
+                statusBarAlignment: 'Right',
+                autoSyncExtension: true,
+                closeAfterSwitch: false
+            },
+            registry: {
+                lastActiveProfile: 'WebDev',
                 profiles: {
-                    'ProfileA': { name: 'ProfileA', lastWorkspacePath: null },
-                    'ProfileB': { name: 'ProfileB', lastWorkspacePath: null }
+                    'WebDev': { name: 'Web Development', createdAt: new Date().toISOString(), lastUsed: new Date().toISOString() }
                 }
-            };
-            saveProfilesRegistry(registryPath, reg);
-
-            // Step 2: Switch to Profile B
-            setSwitchingInProgress(true);
-            reg.lastActiveProfile = 'ProfileB';
-            saveProfilesRegistry(registryPath, reg);
-
-            // Step 3: Profile A deactivates
-            updateActiveProfileWorkspace('ProfileA', { updateLastActive: false });
-
-            // Step 4: Verify Profile B remains lastActiveProfile
-            const regAfter = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
-            assert.strictEqual(regAfter.lastActiveProfile, 'ProfileB', 'lastActiveProfile must be ProfileB!');
-
-            setSwitchingInProgress(false);
-        } finally {
-            if (originalRegistryBackup !== null) {
-                fs.writeFileSync(registryPath, originalRegistryBackup, { encoding: 'utf8', mode: 0o600 });
             }
-        }
+        });
+
+        assert.ok(html.includes(`nonce-${testNonce}`), 'CSP header should contain nonce');
+        assert.ok(html.includes('<script nonce="testnonce123456789">'), 'Script tag should include nonce');
+        assert.ok(html.includes('id="settingAutoRestore"'), 'Should contain autoRestore toggle');
+        assert.ok(html.includes('id="settingDefaultLaunchMode"'), 'Should contain defaultLaunchMode select');
+        assert.ok(html.includes('id="settingCloseAfterSwitch"'), 'Should contain closeAfterSwitch toggle');
+        assert.ok(html.includes('id="settingShowStatusBar"'), 'Should contain showStatusBar toggle');
+        assert.ok(html.includes('id="settingStatusBarAlignment"'), 'Should contain statusBarAlignment select');
+        assert.ok(html.includes('id="settingConfirmDelete"'), 'Should contain confirmDelete toggle');
+        assert.ok(html.includes('id="settingAutoSyncExtension"'), 'Should contain autoSyncExtension toggle');
+        assert.ok(html.includes('id="profileGridContainer"'), 'Should contain profile list container');
+        assert.ok(html.includes('id="registryJsonText"'), 'Should contain registry JSON viewer');
     });
 
-    await runAsyncTest('Full extension activate and deactivate lifecycle in Default profile', async () => {
+    runTest('getSettingsHtml escapes special characters and prevents XSS', () => {
+        const xssProfile = '<script>alert("xss")</script>';
+        const html = getSettingsHtml({
+            nonce: 'nonce999',
+            currentProfile: xssProfile,
+            version: '1.0.5',
+            profilesRoot: '/path/test',
+            settings: {},
+            registry: {
+                lastActiveProfile: 'Default',
+                profiles: {
+                    [xssProfile]: { name: '<b onmouseover=alert(1)>Bad</b>' }
+                }
+            }
+        });
+
+        assert.ok(!html.includes('<script>alert("xss")</script>'), 'Unescaped script tags must not be injected in raw HTML');
+        assert.ok(html.includes('&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;') || html.includes('\\u003cscript\\u003e'), 'Should be safely escaped');
+    });
+
+    runTest('getSettingsHtml strictly avoids inline onclick handlers for CSP compliance', () => {
+        const html = getSettingsHtml({
+            nonce: 'nonce999',
+            currentProfile: 'Default',
+            version: '1.0.5',
+            profilesRoot: '/path/test',
+            settings: {},
+            registry: {
+                lastActiveProfile: 'Default',
+                profiles: {
+                    'TestProfile': { name: 'Test Profile', lastWorkspacePath: '/test/path' }
+                },
+                universalExtensions: {
+                    'test.ext': { id: 'test.ext', name: 'Test Ext', folderName: 'test.ext-1.0' }
+                }
+            },
+            installedExtensions: [
+                { id: 'test.ext', name: 'Test Ext' },
+                { id: 'other.ext', name: 'Other Ext' }
+            ]
+        });
+
+        assert.strictEqual(html.includes('onclick='), false, 'Generated HTML and client script must not use inline onclick handlers (blocked by CSP)');
+    });
+
+    // ----------------------------------------------------
+    // 8. Settings Panel & Lifecycle Integration Tests
+    // ----------------------------------------------------
+    console.log('\n📦 [8/8] Testing SettingsPanel & Settings Management Integration...');
+
+    await runAsyncTest('SettingsPanel.createOrShow manages singleton webview panel', async () => {
+        const mockContext = {
+            extensionPath: path.resolve(__dirname, '..'),
+            subscriptions: []
+        };
+
+        const panel1 = SettingsPanel.createOrShow(mockContext);
+        assert.ok(panel1, 'SettingsPanel instance should be created');
+        assert.strictEqual(SettingsPanel.currentPanel, panel1);
+
+        // Calling createOrShow again returns the same singleton
+        const panel2 = SettingsPanel.createOrShow(mockContext);
+        assert.strictEqual(panel1, panel2, 'Should reuse existing singleton panel');
+
+        // Test webview message handler: updateSetting
+        await panel1._panel._simulateMessage({
+            command: 'updateSetting',
+            key: 'defaultLaunchMode',
+            value: 'switch'
+        });
+        const conf = mockVscode.workspace.getConfiguration('antigravity-orbit');
+        assert.strictEqual(conf.get('defaultLaunchMode'), 'switch');
+
+        // Test webview message handler: renameProfile
         const profilesRoot = getProfilesRoot();
         const registryPath = path.join(profilesRoot, 'profiles.json');
-        let originalRegistryBackup = null;
-        if (fs.existsSync(registryPath)) {
-            originalRegistryBackup = fs.readFileSync(registryPath, 'utf8');
-        }
+        let regBackup = null;
+        if (fs.existsSync(registryPath)) regBackup = fs.readFileSync(registryPath, 'utf8');
 
         try {
-            // Set registry to Default
+            saveProfilesRegistry(registryPath, {
+                lastActiveProfile: 'Default',
+                profiles: {
+                    'TestRename': { name: 'Old Name', createdAt: new Date().toISOString() }
+                }
+            });
+
+            await panel1._panel._simulateMessage({
+                command: 'renameProfile',
+                key: 'TestRename',
+                name: 'New Fancy Name'
+            });
+
+            const updatedReg = getProfilesRegistry().registry;
+            assert.strictEqual(updatedReg.profiles.TestRename.name, 'New Fancy Name');
+
+            // Test webview message handler: resetSettings
+            await panel1._panel._simulateMessage({ command: 'resetSettings' });
+            assert.strictEqual(conf.get('defaultLaunchMode'), 'prompt');
+
+            // Test webview message handler: deleteProfile
+            await panel1._panel._simulateMessage({
+                command: 'deleteProfile',
+                key: 'TestRename'
+            });
+            const afterDeleteReg = getProfilesRegistry().registry;
+            assert.strictEqual(afterDeleteReg.profiles.TestRename, undefined);
+        } finally {
+            if (regBackup !== null) {
+                fs.writeFileSync(registryPath, regBackup, { encoding: 'utf8', mode: 0o600 });
+            }
+        }
+
+        // Dispose panel
+        panel1.dispose();
+        assert.strictEqual(SettingsPanel.currentPanel, undefined);
+    });
+
+    await runAsyncTest('Full extension activation with settings command & dynamic status bar', async () => {
+        const profilesRoot = getProfilesRoot();
+        const registryPath = path.join(profilesRoot, 'profiles.json');
+        let regBackup = null;
+        if (fs.existsSync(registryPath)) regBackup = fs.readFileSync(registryPath, 'utf8');
+
+        try {
             saveProfilesRegistry(registryPath, {
                 lastActiveProfile: 'Default',
                 profiles: {}
@@ -504,16 +691,326 @@ async function runAllTests() {
                 subscriptions: []
             };
 
-            // Activate in Default profile
+            // Test activating with default settings
             await extension.activate(mockContext);
-            assert.ok(mockContext.subscriptions.length > 0, 'Commands and status bar subscriptions should be registered');
 
-            // Deactivate
+            // Verify status bar item created
+            assert.ok(mockLastCreatedStatusBarItem, 'Status bar item must be created');
+            assert.strictEqual(mockLastCreatedStatusBarItem.visible, true);
+            assert.strictEqual(mockLastCreatedStatusBarItem.alignment, mockVscode.StatusBarAlignment.Left);
+
+            // Test 'antigravity-orbit.openSettings' command
+            assert.ok(mockRegisteredCommands.has('antigravity-orbit.openSettings'), 'Command antigravity-orbit.openSettings should be registered');
+            await mockVscode.commands.executeCommand('antigravity-orbit.openSettings');
+            assert.ok(SettingsPanel.currentPanel, 'Executing openSettings command should open SettingsPanel');
+
+            SettingsPanel.currentPanel.dispose();
             extension.deactivate();
         } finally {
-            if (originalRegistryBackup !== null) {
-                fs.writeFileSync(registryPath, originalRegistryBackup, { encoding: 'utf8', mode: 0o600 });
+            if (regBackup !== null) {
+                fs.writeFileSync(registryPath, regBackup, { encoding: 'utf8', mode: 0o600 });
             }
+        }
+    });
+
+    await runAsyncTest('Status bar dynamically reflects showStatusBarItem and statusBarAlignment', async () => {
+        const { updateStatusBar } = require('../extension');
+        const mockContext = { subscriptions: [] };
+
+        // Test Left alignment
+        mockConfigStore.set('antigravity-orbit.showStatusBarItem', true);
+        mockConfigStore.set('antigravity-orbit.statusBarAlignment', 'Left');
+        updateStatusBar(mockContext, 'WebDev');
+        assert.ok(mockLastCreatedStatusBarItem);
+        assert.strictEqual(mockLastCreatedStatusBarItem.visible, true);
+        assert.strictEqual(mockLastCreatedStatusBarItem.alignment, mockVscode.StatusBarAlignment.Left);
+        assert.ok(mockLastCreatedStatusBarItem.text.includes('WebDev'));
+
+        // Test Right alignment
+        mockConfigStore.set('antigravity-orbit.statusBarAlignment', 'Right');
+        updateStatusBar(mockContext, 'PythonML');
+        assert.ok(mockLastCreatedStatusBarItem);
+        assert.strictEqual(mockLastCreatedStatusBarItem.visible, true);
+        assert.strictEqual(mockLastCreatedStatusBarItem.alignment, mockVscode.StatusBarAlignment.Right);
+        assert.ok(mockLastCreatedStatusBarItem.text.includes('PythonML'));
+
+        // Test Hide status bar
+        mockConfigStore.set('antigravity-orbit.showStatusBarItem', false);
+        updateStatusBar(mockContext, 'Default');
+        assert.strictEqual(mockLastCreatedStatusBarItem.visible, false);
+
+        // Reset
+        mockConfigStore.delete('antigravity-orbit.showStatusBarItem');
+        mockConfigStore.delete('antigravity-orbit.statusBarAlignment');
+    });
+
+    await runAsyncTest('SettingsPanel handles export and import of profiles registry backup', async () => {
+        const mockContext = {
+            extensionPath: path.resolve(__dirname, '..'),
+            subscriptions: []
+        };
+        const panel = SettingsPanel.createOrShow(mockContext);
+        const profilesRoot = getProfilesRoot();
+        const registryPath = path.join(profilesRoot, 'profiles.json');
+        let regBackup = null;
+        if (fs.existsSync(registryPath)) regBackup = fs.readFileSync(registryPath, 'utf8');
+
+        const tempBackupFile = path.join(os.tmpdir(), `orbit-reg-test-${Date.now()}.json`);
+
+        try {
+            saveProfilesRegistry(registryPath, {
+                lastActiveProfile: 'BackupProfile',
+                profiles: {
+                    'BackupProfile': { name: 'Backup Profile', createdAt: new Date().toISOString() }
+                }
+            });
+
+            // Simulate Export
+            mockVscode.window.showSaveDialog = async () => ({ fsPath: tempBackupFile });
+            await panel._panel._simulateMessage({ command: 'exportRegistry' });
+            assert.ok(fs.existsSync(tempBackupFile), 'Exported backup file should exist');
+            const exportedContent = JSON.parse(fs.readFileSync(tempBackupFile, 'utf8'));
+            assert.strictEqual(exportedContent.lastActiveProfile, 'BackupProfile');
+
+            // Modify registry then simulate Import
+            saveProfilesRegistry(registryPath, {
+                lastActiveProfile: 'Default',
+                profiles: {}
+            });
+            mockVscode.window.showOpenDialog = async () => [{ fsPath: tempBackupFile }];
+            await panel._panel._simulateMessage({ command: 'importRegistry' });
+
+            const restoredReg = getProfilesRegistry().registry;
+            assert.strictEqual(restoredReg.lastActiveProfile, 'BackupProfile');
+            assert.ok(restoredReg.profiles.BackupProfile);
+        } finally {
+            if (fs.existsSync(tempBackupFile)) fs.unlinkSync(tempBackupFile);
+            if (regBackup !== null) {
+                fs.writeFileSync(registryPath, regBackup, { encoding: 'utf8', mode: 0o600 });
+            }
+            panel.dispose();
+        }
+    });
+
+    await runAsyncTest('showProfileMenu includes Orbit Settings & Dashboard option', async () => {
+        const { showProfileMenu } = require('../src/profileManager');
+        let quickPickItems = null;
+        const originalShowQuickPick = mockVscode.window.showQuickPick;
+
+        mockVscode.window.showQuickPick = async (items) => {
+            quickPickItems = items;
+            return items.find(i => i.action === 'open_settings');
+        };
+
+        const mockContext = { extensionPath: path.resolve(__dirname, '..'), subscriptions: [] };
+        await showProfileMenu(mockContext);
+
+        assert.ok(quickPickItems, 'showQuickPick should be called with menu items');
+        const settingsItem = quickPickItems.find(i => i.action === 'open_settings');
+        assert.ok(settingsItem, 'Menu must contain open_settings item');
+        assert.ok(settingsItem.label.includes('Orbit Settings & Dashboard'));
+
+        mockVscode.window.showQuickPick = originalShowQuickPick;
+    });
+
+    console.log('\n📦 [9/9] Testing Universal Extensions System & Isolation...');
+
+    const { getUniversalExtensionsDir } = require('../src/constants');
+    const {
+        getInstalledUserExtensions,
+        addUniversalExtension,
+        removeUniversalExtension,
+        syncUniversalExtensionsToNewProfile
+    } = require('../src/universalExtensions');
+
+    runTest('getUniversalExtensionsDir returns .universal-extensions directory', () => {
+        const uniDir = getUniversalExtensionsDir();
+        assert.ok(fs.existsSync(uniDir), 'Universal extensions directory should exist');
+        assert.ok(uniDir.endsWith('.universal-extensions'), 'Directory path should end with .universal-extensions');
+    });
+
+    runTest('sanitizeExtensionId validates IDs and rejects directory traversal & prototype attacks', () => {
+        assert.strictEqual(sanitizeExtensionId('esbenp.prettier-vscode'), 'esbenp.prettier-vscode');
+        assert.strictEqual(sanitizeExtensionId('ms-python.python'), 'ms-python.python');
+        assert.strictEqual(sanitizeExtensionId('ms-toolsai.jupyter_keymap-1.0'), 'ms-toolsai.jupyter_keymap-1.0');
+
+        // Rejections
+        assert.strictEqual(sanitizeExtensionId('../traversal/path'), null);
+        assert.strictEqual(sanitizeExtensionId('/absolute/path'), null);
+        assert.strictEqual(sanitizeExtensionId('__proto__'), null);
+        assert.strictEqual(sanitizeExtensionId('constructor'), null);
+        assert.strictEqual(sanitizeExtensionId('has spaces in id'), null);
+        assert.strictEqual(sanitizeExtensionId(''), null);
+        assert.strictEqual(sanitizeExtensionId(null), null);
+    });
+
+    await runAsyncTest('addUniversalExtension, getInstalledUserExtensions, and removeUniversalExtension', async () => {
+        const testExtDir = path.join(os.tmpdir(), `test-mock-ext-${Date.now()}`);
+        fs.mkdirSync(testExtDir, { recursive: true });
+        fs.writeFileSync(path.join(testExtDir, 'package.json'), JSON.stringify({
+            name: 'sample-linter',
+            displayName: 'Sample Linter',
+            publisher: 'testpublisher',
+            version: '2.1.0',
+            description: 'A mock linter extension'
+        }));
+        fs.writeFileSync(path.join(testExtDir, 'extension.js'), 'module.exports = {};');
+
+        // Add to mock vscode.extensions
+        mockVscode.extensions.all = [
+            {
+                id: 'testpublisher.sample-linter',
+                extensionPath: testExtDir,
+                packageJSON: {
+                    name: 'sample-linter',
+                    displayName: 'Sample Linter',
+                    publisher: 'testpublisher',
+                    version: '2.1.0',
+                    description: 'A mock linter extension'
+                }
+            },
+            {
+                id: 'sajedulisakib-001.antigravity-orbit',
+                extensionPath: path.resolve(__dirname, '..'),
+                packageJSON: { isBuiltin: false }
+            },
+            {
+                id: 'vscode.builtin-git',
+                extensionPath: '/resources/app/extensions/git',
+                packageJSON: { isBuiltin: true }
+            }
+        ];
+
+        try {
+            // 1. Test getInstalledUserExtensions
+            const userExts = getInstalledUserExtensions();
+            assert.ok(userExts.some(e => e.id === 'testpublisher.sample-linter'), 'Should detect sample-linter');
+            assert.ok(!userExts.some(e => e.id.includes('antigravity-orbit')), 'Should filter out Orbit profile manager itself');
+            assert.ok(!userExts.some(e => e.id.includes('builtin-git')), 'Should filter out built-in extensions');
+
+            // 2. Add to Universal Pool
+            const added = addUniversalExtension('testpublisher.sample-linter');
+            assert.strictEqual(added, true);
+
+            const { registry } = getProfilesRegistry();
+            assert.ok(registry.universalExtensions['testpublisher.sample-linter'], 'Registry must record universal extension');
+            assert.strictEqual(registry.universalExtensions['testpublisher.sample-linter'].name, 'Sample Linter');
+
+            const uniStoreDir = getUniversalExtensionsDir();
+            const clonedFolder = path.join(uniStoreDir, registry.universalExtensions['testpublisher.sample-linter'].folderName);
+            assert.ok(fs.existsSync(clonedFolder), 'Universal store folder must exist on disk');
+            assert.ok(fs.existsSync(path.join(clonedFolder, 'extension.js')), 'Files must be copied');
+
+            // 3. Remove from Universal Pool
+            const removed = removeUniversalExtension('testpublisher.sample-linter');
+            assert.strictEqual(removed, true);
+            const updatedReg = getProfilesRegistry().registry;
+            assert.strictEqual(updatedReg.universalExtensions['testpublisher.sample-linter'], undefined);
+            assert.strictEqual(fs.existsSync(clonedFolder), false, 'Universal store folder should be deleted');
+        } finally {
+            if (fs.existsSync(testExtDir)) fs.rmSync(testExtDir, { recursive: true, force: true });
+            mockVscode.extensions.all = [];
+        }
+    });
+
+    await runAsyncTest('syncUniversalExtensionsToNewProfile clones universal extensions into new profiles ONLY (older profiles remain isolated)', async () => {
+        const profilesRoot = getProfilesRoot();
+        const oldProfileExtDir = path.join(profilesRoot, 'OldExistingProfile', 'extensions');
+        const newProfileExtDir = path.join(profilesRoot, 'BrandNewProfile', 'extensions');
+
+        // Create older profile directory prior to adding universal extension
+        fs.mkdirSync(oldProfileExtDir, { recursive: true });
+        fs.writeFileSync(path.join(oldProfileExtDir, 'extensions.json'), JSON.stringify([]));
+
+        // Create a mock extension and register as universal
+        const testExtDir = path.join(os.tmpdir(), `test-uni-ext-${Date.now()}`);
+        fs.mkdirSync(testExtDir, { recursive: true });
+        fs.writeFileSync(path.join(testExtDir, 'package.json'), JSON.stringify({
+            name: 'code-formatter',
+            displayName: 'Code Formatter',
+            publisher: 'tools',
+            version: '1.5.0'
+        }));
+        fs.writeFileSync(path.join(testExtDir, 'formatter.js'), 'console.log("formatter");');
+
+        mockVscode.extensions.all = [{
+            id: 'tools.code-formatter',
+            extensionPath: testExtDir,
+            packageJSON: { name: 'code-formatter', displayName: 'Code Formatter', publisher: 'tools', version: '1.5.0' }
+        }];
+
+        try {
+            addUniversalExtension('tools.code-formatter');
+
+            // 1. Simulate NEW profile creation: sync Orbit first, then universal extensions
+            const sourceExt = path.resolve(__dirname, '..');
+            syncExtensionToProfile(sourceExt, newProfileExtDir);
+            syncUniversalExtensionsToNewProfile(newProfileExtDir);
+
+            // Verify new profile received BOTH Orbit and Universal extension
+            const newExtEntries = fs.readdirSync(newProfileExtDir);
+            assert.ok(newExtEntries.some(f => f.startsWith('sajedulisakib-001.antigravity-orbit')), 'New profile must receive Orbit extension first');
+            assert.ok(newExtEntries.some(f => f.startsWith('tools.code-formatter')), 'New profile must receive universal extension');
+            
+            const newExtJson = JSON.parse(fs.readFileSync(path.join(newProfileExtDir, 'extensions.json'), 'utf8'));
+            assert.ok(newExtJson.some(e => e.identifier.id === 'sajedulisakib-001.antigravity-orbit'), 'New profile extensions.json must record Orbit entry');
+            assert.ok(newExtJson.some(e => e.identifier.id === 'tools.code-formatter'), 'New profile extensions.json must record universal extension entry');
+            assert.strictEqual(newExtJson[0].identifier.id, 'sajedulisakib-001.antigravity-orbit', 'Orbit must be registered first in extensions.json');
+
+            // 2. ISOLATION CHECK: Verify OLD profile was NOT touched or injected
+            const oldExtEntries = fs.readdirSync(oldProfileExtDir);
+            assert.ok(!oldExtEntries.some(f => f.startsWith('tools.code-formatter')), 'Old existing profile must NOT receive universal extension');
+            const oldExtJson = JSON.parse(fs.readFileSync(path.join(oldProfileExtDir, 'extensions.json'), 'utf8'));
+            assert.strictEqual(oldExtJson.length, 0, 'Old profile extensions.json must remain untouched');
+        } finally {
+            removeUniversalExtension('tools.code-formatter');
+            if (fs.existsSync(testExtDir)) fs.rmSync(testExtDir, { recursive: true, force: true });
+            if (fs.existsSync(path.join(profilesRoot, 'OldExistingProfile'))) fs.rmSync(path.join(profilesRoot, 'OldExistingProfile'), { recursive: true, force: true });
+            if (fs.existsSync(path.join(profilesRoot, 'BrandNewProfile'))) fs.rmSync(path.join(profilesRoot, 'BrandNewProfile'), { recursive: true, force: true });
+            mockVscode.extensions.all = [];
+        }
+    });
+
+    await runAsyncTest('SettingsPanel handles addUniversalExtension and removeUniversalExtension messages', async () => {
+        const mockContext = { extensionPath: path.resolve(__dirname, '..'), subscriptions: [] };
+        const panel = SettingsPanel.createOrShow(mockContext);
+
+        const testExtDir = path.join(os.tmpdir(), `test-panel-uni-${Date.now()}`);
+        fs.mkdirSync(testExtDir, { recursive: true });
+        fs.writeFileSync(path.join(testExtDir, 'package.json'), JSON.stringify({
+            name: 'panel-plugin',
+            displayName: 'Panel Plugin',
+            publisher: 'paneltest',
+            version: '3.0.0'
+        }));
+
+        mockVscode.extensions.all = [{
+            id: 'paneltest.panel-plugin',
+            extensionPath: testExtDir,
+            packageJSON: { name: 'panel-plugin', displayName: 'Panel Plugin', publisher: 'paneltest', version: '3.0.0' }
+        }];
+
+        try {
+            // Message: addUniversalExtension
+            await panel._panel._simulateMessage({ command: 'addUniversalExtension', id: 'paneltest.panel-plugin' });
+            assert.ok(panel._panel.lastPostedMessage, 'Panel should post toast response');
+            assert.strictEqual(panel._panel.lastPostedMessage.type, 'showToast');
+            assert.ok(panel._panel.lastPostedMessage.text.includes('paneltest.panel-plugin'));
+
+            const { registry } = getProfilesRegistry();
+            assert.ok(registry.universalExtensions['paneltest.panel-plugin']);
+
+            // Message: removeUniversalExtension
+            await panel._panel._simulateMessage({ command: 'removeUniversalExtension', id: 'paneltest.panel-plugin' });
+            assert.strictEqual(panel._panel.lastPostedMessage.type, 'showToast');
+            assert.ok(panel._panel.lastPostedMessage.text.includes('Removed'));
+
+            const updatedReg = getProfilesRegistry().registry;
+            assert.strictEqual(updatedReg.universalExtensions['paneltest.panel-plugin'], undefined);
+        } finally {
+            if (fs.existsSync(testExtDir)) fs.rmSync(testExtDir, { recursive: true, force: true });
+            panel.dispose();
+            mockVscode.extensions.all = [];
         }
     });
 

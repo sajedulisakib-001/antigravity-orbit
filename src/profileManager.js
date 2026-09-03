@@ -6,6 +6,7 @@ const { getProfilesRoot, getExtensionFolderName } = require('./constants');
 const { sanitizeProfileName } = require('./sanitizer');
 const { getProfilesRegistry, saveProfilesRegistry, findProfileKey } = require('./registry');
 const { copyDirRecursiveSync, syncExtensionToProfile } = require('./fileSync');
+const { syncUniversalExtensionsToNewProfile } = require('./universalExtensions');
 const { launchAntigravityInstance, validateWorkspacePath } = require('./launcher');
 
 /**
@@ -218,7 +219,12 @@ async function launchProfile(profileName, context, { workspacePath, closeCurrent
 
         // Update central registry
         const validatedWs = validateWorkspacePath(workspacePath);
-        if (!registry.profiles[safeName]) {
+        const isNewProfile = !registry.profiles[safeName];
+
+        if (isNewProfile) {
+            // New profile: Clone all universal extensions into the new profile's extensions directory
+            syncUniversalExtensionsToNewProfile(customExtDir);
+
             registry.profiles[safeName] = {
                 name: profileName.trim().slice(0, 100),
                 createdAt: new Date().toISOString(),
@@ -299,6 +305,25 @@ async function promptProfileActions(profileName, context) {
         return;
     }
 
+    // Check user preferred launch mode setting
+    const config = vscode.workspace.getConfiguration('antigravity-orbit');
+    const defaultMode = config.get('defaultLaunchMode', 'prompt');
+    const closeAfter = config.get('closeAfterSwitch', true);
+
+    if (defaultMode === 'switch') {
+        await launchProfile(profileName, context, {
+            workspacePath: wsPath,
+            closeCurrent: closeAfter
+        });
+        return;
+    } else if (defaultMode === 'new_window') {
+        await launchProfile(profileName, context, {
+            workspacePath: undefined,
+            closeCurrent: false
+        });
+        return;
+    }
+
     const actionItems = [
         {
             label: `$(arrow-swap) Switch to '${profileName}'`,
@@ -325,7 +350,7 @@ async function promptProfileActions(profileName, context) {
     if (selectedAction.mode === 'switch') {
         await launchProfile(profileName, context, {
             workspacePath: wsPath,
-            closeCurrent: true
+            closeCurrent: closeAfter
         });
     } else {
         await launchProfile(profileName, context, {
@@ -419,18 +444,25 @@ async function showDeleteProfileMenu(context) {
         return;
     }
 
-    const isCurrentActive = (currentProfile.toLowerCase() === safeKey.toLowerCase());
-    const warningMsg = isCurrentActive
-        ? `You are currently using profile '${safeKey}'. Deleting it will remove its files on disk, though this window will remain open until closed. Are you sure?`
-        : `Are you sure you want to delete profile '${safeKey}' and all its isolated extensions & data?`;
+    const config = vscode.workspace.getConfiguration('antigravity-orbit');
+    const confirmRequired = config.get('confirmDelete', true);
+    let proceed = true;
 
-    const confirm = await vscode.window.showWarningMessage(
-        warningMsg,
-        { modal: true },
-        'Delete Profile'
-    );
+    if (confirmRequired) {
+        const isCurrentActive = (currentProfile.toLowerCase() === safeKey.toLowerCase());
+        const warningMsg = isCurrentActive
+            ? `You are currently using profile '${safeKey}'. Deleting it will remove its files on disk, though this window will remain open until closed. Are you sure?`
+            : `Are you sure you want to delete profile '${safeKey}' and all its isolated extensions & data?`;
 
-    if (confirm === 'Delete Profile') {
+        const confirm = await vscode.window.showWarningMessage(
+            warningMsg,
+            { modal: true },
+            'Delete Profile'
+        );
+        proceed = (confirm === 'Delete Profile');
+    }
+
+    if (proceed) {
         try {
             const resolvedRoot = path.resolve(profilesRoot);
             const profileDir = path.resolve(profilesRoot, safeKey);
@@ -514,6 +546,13 @@ async function showProfileMenu(context) {
     });
 
     items.push({
+        label: '$(gear) Orbit Settings & Dashboard',
+        description: 'Customize extension options & inspect profiles',
+        detail: 'Configure auto-restore, launch behavior, status bar, and profile actions',
+        action: 'open_settings'
+    });
+
+    items.push({
         label: '$(plus) Create New Profile...',
         description: 'Set up a new isolated environment',
         detail: 'Creates independent extensions and user data folders',
@@ -545,6 +584,8 @@ async function showProfileMenu(context) {
 
     if (selected.action === 'select_profile') {
         await promptProfileActions(selected.profileName, context);
+    } else if (selected.action === 'open_settings') {
+        vscode.commands.executeCommand('antigravity-orbit.openSettings');
     } else if (selected.action === 'create') {
         await promptCreateProfile(context);
     } else if (selected.action === 'open_folder') {

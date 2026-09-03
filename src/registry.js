@@ -1,7 +1,7 @@
 const path = require('path');
 const fs = require('fs');
 const { getProfilesRoot } = require('./constants');
-const { sanitizeProfileName } = require('./sanitizer');
+const { sanitizeProfileName, sanitizeExtensionId } = require('./sanitizer');
 const { getProfileLastWorkspaceFromStorage } = require('./fileSync');
 
 /**
@@ -28,8 +28,9 @@ function getProfilesRegistry() {
     const profilesRoot = getProfilesRoot();
     const registryPath = path.join(profilesRoot, 'profiles.json');
 
-    // Create a dictionary object with null prototype to avoid prototype pollution
+    // Create dictionary objects with null prototype to avoid prototype pollution
     const cleanProfiles = Object.create(null);
+    const cleanUniversal = Object.create(null);
     let lastActiveProfile = 'Default';
 
     if (fs.existsSync(registryPath)) {
@@ -74,6 +75,26 @@ function getProfilesRegistry() {
                     }
                 }
             }
+
+            if (raw && typeof raw.universalExtensions === 'object' && raw.universalExtensions !== null && !Array.isArray(raw.universalExtensions)) {
+                for (const key of Object.keys(raw.universalExtensions)) {
+                    const safeKey = sanitizeExtensionId(key);
+                    if (safeKey && Object.prototype.hasOwnProperty.call(raw.universalExtensions, key)) {
+                        const entry = raw.universalExtensions[key];
+                        if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+                            cleanUniversal[safeKey] = {
+                                id: safeKey,
+                                name: typeof entry.name === 'string' ? entry.name.slice(0, 100).replace(/[\x00-\x1F\x7F]/g, '') : safeKey,
+                                publisher: typeof entry.publisher === 'string' ? entry.publisher.slice(0, 100).replace(/[\x00-\x1F\x7F]/g, '') : '',
+                                version: typeof entry.version === 'string' ? entry.version.slice(0, 50).replace(/[\x00-\x1F\x7F]/g, '') : '1.0.0',
+                                folderName: typeof entry.folderName === 'string' ? sanitizeExtensionId(entry.folderName) || safeKey : safeKey,
+                                description: typeof entry.description === 'string' ? entry.description.slice(0, 250).replace(/[\x00-\x1F\x7F]/g, '') : '',
+                                addedAt: typeof entry.addedAt === 'string' ? entry.addedAt : new Date().toISOString()
+                            };
+                        }
+                    }
+                }
+            }
         } catch (e) {
             // Ignore parse errors on corrupted files
         }
@@ -112,7 +133,8 @@ function getProfilesRegistry() {
         registryPath,
         registry: {
             lastActiveProfile,
-            profiles: cleanProfiles
+            profiles: cleanProfiles,
+            universalExtensions: cleanUniversal
         },
         profilesRoot
     };
@@ -123,15 +145,19 @@ function getProfilesRegistry() {
  * to prevent file corruption during crashes or partial writes, with restricted file permissions (0600).
  */
 function saveProfilesRegistry(registryPath, registry) {
-    if (!registry || !registry.profiles || typeof registry.profiles !== 'object' || Array.isArray(registry.profiles)) {
+    if (!registry || typeof registry !== 'object' || Array.isArray(registry)) {
         return;
     }
 
     const cleanObject = {};
-    for (const key of Object.keys(registry.profiles)) {
+    const profilesSrc = (registry.profiles && typeof registry.profiles === 'object' && !Array.isArray(registry.profiles))
+        ? registry.profiles
+        : {};
+
+    for (const key of Object.keys(profilesSrc)) {
         const safeKey = sanitizeProfileName(key);
-        if (safeKey && Object.prototype.hasOwnProperty.call(registry.profiles, key)) {
-            const item = registry.profiles[key];
+        if (safeKey && Object.prototype.hasOwnProperty.call(profilesSrc, key)) {
+            const item = profilesSrc[key];
             if (item && typeof item === 'object' && !Array.isArray(item)) {
                 const rawName = typeof item.name === 'string' ? item.name.slice(0, 100).replace(/[\x00-\x1F\x7F]/g, '') : safeKey;
                 let lastWorkspace = null;
@@ -151,6 +177,29 @@ function saveProfilesRegistry(registryPath, registry) {
         }
     }
 
+    const cleanUniversal = {};
+    const universalSrc = (registry.universalExtensions && typeof registry.universalExtensions === 'object' && !Array.isArray(registry.universalExtensions))
+        ? registry.universalExtensions
+        : {};
+
+    for (const key of Object.keys(universalSrc)) {
+        const safeKey = sanitizeExtensionId(key);
+        if (safeKey && Object.prototype.hasOwnProperty.call(universalSrc, key)) {
+            const item = universalSrc[key];
+            if (item && typeof item === 'object' && !Array.isArray(item)) {
+                cleanUniversal[safeKey] = {
+                    id: safeKey,
+                    name: typeof item.name === 'string' ? item.name.slice(0, 100).replace(/[\x00-\x1F\x7F]/g, '') : safeKey,
+                    publisher: typeof item.publisher === 'string' ? item.publisher.slice(0, 100).replace(/[\x00-\x1F\x7F]/g, '') : '',
+                    version: typeof item.version === 'string' ? item.version.slice(0, 50).replace(/[\x00-\x1F\x7F]/g, '') : '1.0.0',
+                    folderName: typeof item.folderName === 'string' ? sanitizeExtensionId(item.folderName) || safeKey : safeKey,
+                    description: typeof item.description === 'string' ? item.description.slice(0, 250).replace(/[\x00-\x1F\x7F]/g, '') : '',
+                    addedAt: item.addedAt || new Date().toISOString()
+                };
+            }
+        }
+    }
+
     let lastActive = 'Default';
     if (typeof registry.lastActiveProfile === 'string' && registry.lastActiveProfile.trim()) {
         const trimmed = registry.lastActiveProfile.trim();
@@ -164,7 +213,8 @@ function saveProfilesRegistry(registryPath, registry) {
 
     const payload = JSON.stringify({
         lastActiveProfile: lastActive,
-        profiles: cleanObject
+        profiles: cleanObject,
+        universalExtensions: cleanUniversal
     }, null, 2);
 
     const dir = path.dirname(registryPath);

@@ -14,7 +14,7 @@ function getProfilesRoot() {
 }
 
 /**
- * Resolves the destination folder name for copying this extension (e.g. sajedulisakib-001.antigravity-orbit-1.0.2).
+ * Resolves the destination folder name for copying this extension (e.g. sajedulisakib-001.antigravity-orbit-1.0.5).
  * Sanitizes input to prevent directory traversal or malformed paths.
  */
 function getExtensionFolderName(sourceExtPath) {
@@ -35,7 +35,20 @@ function getExtensionFolderName(sourceExtPath) {
     return 'sajedulisakib-001.antigravity-orbit-1.0.5';
 }
 
+/**
+ * Returns the central storage directory for Universal Extensions (~/.antigravity-custom-profiles/.universal-extensions).
+ */
+function getUniversalExtensionsDir() {
+    const root = getProfilesRoot();
+    const universalDir = path.join(root, '.universal-extensions');
+    if (!fs.existsSync(universalDir)) {
+        fs.mkdirSync(universalDir, { recursive: true, mode: 0o700 });
+    }
+    return universalDir;
+}
+
 module.exports = {
     getProfilesRoot,
-    getExtensionFolderName
+    getExtensionFolderName,
+    getUniversalExtensionsDir
 };

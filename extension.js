@@ -13,8 +13,41 @@ const {
     updateActiveProfileWorkspace
 } = require('./src/profileManager');
 const { validateWorkspacePath } = require('./src/launcher');
+const { SettingsPanel } = require('./src/settingsPanel');
 
 let activeProfileName = 'Default';
+let profileStatusBarItem = null;
+
+/**
+ * Updates or rebuilds the status bar item according to user preferences.
+ * @param {vscode.ExtensionContext} context
+ * @param {string} currentProfile
+ */
+function updateStatusBar(context, currentProfile) {
+    const orbitConfig = vscode.workspace.getConfiguration('antigravity-orbit');
+    const showItem = orbitConfig.get('showStatusBarItem', true);
+    const alignment = orbitConfig.get('statusBarAlignment', 'Left');
+
+    if (profileStatusBarItem) {
+        profileStatusBarItem.dispose();
+        profileStatusBarItem = null;
+    }
+
+    if (!showItem) {
+        return;
+    }
+
+    const alignEnum = (alignment === 'Right')
+        ? vscode.StatusBarAlignment.Right
+        : vscode.StatusBarAlignment.Left;
+
+    profileStatusBarItem = vscode.window.createStatusBarItem(alignEnum, 99);
+    profileStatusBarItem.command = 'antigravity-orbit.switch';
+    profileStatusBarItem.text = `$(globe) Orbit: ${currentProfile}`;
+    profileStatusBarItem.tooltip = `Orbit: ${currentProfile}\nClick to switch, create, or customize settings`;
+    profileStatusBarItem.show();
+    context.subscriptions.push(profileStatusBarItem);
+}
 
 /**
  * Activates the Antigravity Profile Manager extension.
@@ -25,15 +58,19 @@ async function activate(context) {
     activeProfileName = currentProfile;
     const { profilesRoot, registryPath, registry } = getProfilesRegistry();
 
-    // Ensure all custom profile directories have the latest Orbit extension and cleaned obsolete versions
-    const sourceExtPath = (context && context.extensionPath) ? context.extensionPath : path.resolve(__dirname);
-    try {
-        syncExtensionToAllProfiles(sourceExtPath, profilesRoot);
-    } catch (e) { }
-
-    // Check if auto-restore is enabled (default: true)
     const orbitConfig = vscode.workspace.getConfiguration('antigravity-orbit');
     const legacyConfig = vscode.workspace.getConfiguration('antigravity-profile-manager');
+
+    // Ensure all custom profile directories have the latest Orbit extension if autoSyncExtension is enabled
+    const autoSync = orbitConfig.get('autoSyncExtension', true);
+    if (autoSync) {
+        const sourceExtPath = (context && context.extensionPath) ? context.extensionPath : path.resolve(__dirname);
+        try {
+            syncExtensionToAllProfiles(sourceExtPath, profilesRoot);
+        } catch (e) { }
+    }
+
+    // Check if auto-restore is enabled (default: true)
     const autoRestore = orbitConfig.get('autoRestoreLastProfile', legacyConfig.get('autoRestoreLastProfile', true));
 
     // If starting in Default profile, check if we should seamlessly restore the last active custom profile
@@ -97,28 +134,39 @@ async function activate(context) {
         const root = getProfilesRoot();
         vscode.env.openExternal(vscode.Uri.file(root));
     };
+    const openSettingsHandler = () => {
+        SettingsPanel.createOrShow(context);
+    };
 
     const switchCmd = vscode.commands.registerCommand('antigravity-orbit.switch', switchHandler);
     const createCmd = vscode.commands.registerCommand('antigravity-orbit.create', createHandler);
     const openFolderCmd = vscode.commands.registerCommand('antigravity-orbit.openFolder', openFolderHandler);
+    const openSettingsCmd = vscode.commands.registerCommand('antigravity-orbit.openSettings', openSettingsHandler);
 
     // Legacy aliases
     const legacySwitchCmd = vscode.commands.registerCommand('antigravity-profile-manager.switch', switchHandler);
     const legacyCreateCmd = vscode.commands.registerCommand('antigravity-profile-manager.create', createHandler);
     const legacyOpenFolderCmd = vscode.commands.registerCommand('antigravity-profile-manager.openFolder', openFolderHandler);
+    const legacyOpenSettingsCmd = vscode.commands.registerCommand('antigravity-profile-manager.openSettings', openSettingsHandler);
 
     context.subscriptions.push(
-        switchCmd, createCmd, openFolderCmd,
-        legacySwitchCmd, legacyCreateCmd, legacyOpenFolderCmd
+        switchCmd, createCmd, openFolderCmd, openSettingsCmd,
+        legacySwitchCmd, legacyCreateCmd, legacyOpenFolderCmd, legacyOpenSettingsCmd
     );
 
     // 2. Inject clickable Status Bar item with active Orbit indicator
-    const profileStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
-    profileStatusBarItem.command = 'antigravity-orbit.switch';
-    profileStatusBarItem.text = `$(globe) Orbit: ${currentProfile}`;
-    profileStatusBarItem.tooltip = `Orbit: ${currentProfile}\nClick to switch, create, or manage profiles`;
-    profileStatusBarItem.show();
-    context.subscriptions.push(profileStatusBarItem);
+    updateStatusBar(context, currentProfile);
+
+    // 3. Listen for configuration changes
+    const configWatcher = vscode.workspace.onDidChangeConfiguration((e) => {
+        if (!e || e.affectsConfiguration('antigravity-orbit') || e.affectsConfiguration('antigravity-profile-manager')) {
+            updateStatusBar(context, currentProfile);
+            if (SettingsPanel.currentPanel) {
+                SettingsPanel.currentPanel.updateWebviewState();
+            }
+        }
+    });
+    context.subscriptions.push(configWatcher);
 }
 
 function deactivate() {
@@ -131,5 +179,6 @@ function deactivate() {
 
 module.exports = {
     activate,
-    deactivate
+    deactivate,
+    updateStatusBar
 };

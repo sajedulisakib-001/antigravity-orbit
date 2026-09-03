@@ -132,41 +132,46 @@ function syncExtensionToProfile(sourceExtPath, customExtDir) {
             }
         } catch (e) { }
 
-        // 3. Update extensions.json if present
+        // 3. Create or update extensions.json with Orbit registered first
         const extJsonPath = path.join(customExtDir, 'extensions.json');
+        let extJson = [];
         if (fs.existsSync(extJsonPath)) {
             try {
-                let extVersion = '1.0.5';
-                try {
-                    const pkgPath = path.join(sourceExtPath, 'package.json');
-                    if (fs.existsSync(pkgPath)) {
-                        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-                        if (pkg && typeof pkg.version === 'string' && pkg.version.trim()) {
-                            extVersion = pkg.version.trim();
-                        }
-                    }
-                } catch (e) { }
-
                 const raw = JSON.parse(fs.readFileSync(extJsonPath, 'utf8'));
-                if (Array.isArray(raw)) {
-                    const filtered = raw.filter(item => {
-                        const id = item?.identifier?.id;
-                        return id !== 'sakib.antigravity-profile-manager' && id !== 'sajedulisakib-001.antigravity-orbit';
-                    });
-                    filtered.push({
-                        identifier: { id: 'sajedulisakib-001.antigravity-orbit' },
-                        version: extVersion,
-                        location: {
-                            $mid: 1,
-                            path: targetExtFolder,
-                            scheme: 'file'
-                        },
-                        relativeLocation: targetFolderName
-                    });
-                    fs.writeFileSync(extJsonPath, JSON.stringify(filtered, null, 2), { encoding: 'utf8', mode: 0o600 });
-                }
+                if (Array.isArray(raw)) extJson = raw;
             } catch (e) { }
         }
+
+        try {
+            let extVersion = '1.0.5';
+            try {
+                const pkgPath = path.join(sourceExtPath, 'package.json');
+                if (fs.existsSync(pkgPath)) {
+                    const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+                    if (pkg && typeof pkg.version === 'string' && pkg.version.trim()) {
+                        extVersion = pkg.version.trim();
+                    }
+                }
+            } catch (e) { }
+
+            const filtered = extJson.filter(item => {
+                const id = item?.identifier?.id;
+                return id !== 'sakib.antigravity-profile-manager' && id !== 'sajedulisakib-001.antigravity-orbit';
+            });
+
+            filtered.unshift({
+                identifier: { id: 'sajedulisakib-001.antigravity-orbit' },
+                version: extVersion,
+                location: {
+                    $mid: 1,
+                    path: targetExtFolder,
+                    scheme: 'file'
+                },
+                relativeLocation: targetFolderName
+            });
+
+            fs.writeFileSync(extJsonPath, JSON.stringify(filtered, null, 2), { encoding: 'utf8', mode: 0o600 });
+        } catch (e) { }
     } catch (e) { }
 }
 
