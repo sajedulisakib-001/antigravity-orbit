@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/compatibility-Google%20Antigravity%20IDE%20%2F%20VS%20Code%20%5E1.80.0-purple.svg?style=flat-square" alt="Engines" />
   <img src="https://img.shields.io/badge/dependencies-zero%20(pure%20node)-orange.svg?style=flat-square" alt="Zero Dependencies" />
   <a href="#contributing"><img src="https://img.shields.io/badge/contributions-welcome-orange.svg?style=flat-square" alt="Contributions Welcome" /></a>
-  <img src="https://img.shields.io/badge/license-MIT-green.svg?style=flat-square" alt="License" />
+  <img src="https://img.shields.io/badge/license-PolyForm--Noncommercial--1.0.0-blue.svg?style=flat-square" alt="License" />
 </p>
 
 <p align="center">
@@ -229,4 +229,4 @@ Orbit is engineered to be lightweight, zero-dependency, and cross-platform. Beca
 
 ## 📄 License
 
-Distributed under the **MIT License**. See `LICENSE` for details.
+Distributed under the **PolyForm Noncommercial License 1.0.0**. See [`LICENSE`](file:///Users/sakib/.antigravity-ide/extensions/antigravity-profiles/LICENSE) for details. Non-commercial use, personal testing, and community contributions are welcome; commercial resale or publishing under another name/entity is strictly prohibited.

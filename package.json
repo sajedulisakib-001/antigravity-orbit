@@ -15,7 +15,7 @@
     "publish:vscode": "node ./scripts/publish-all.js --skip-ovsx",
     "publish:ovsx": "node ./scripts/publish-all.js --skip-vscode"
   },
-  "license": "MIT",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "engines": {
     "vscode": "^1.80.0"
   },
