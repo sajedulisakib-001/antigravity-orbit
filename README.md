@@ -2,6 +2,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/version-1.0.2-blue.svg?style=flat-square" alt="Version 1.0.2" />
+  <a href="https://open-vsx.org/extension/sajedulisakib-001/antigravity-orbit"><img src="https://img.shields.io/open-vsx/dt/sajedulisakib-001/antigravity-orbit?style=flat-square&color=blueviolet" alt="Open VSX Downloads" /></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-brightgreen.svg?style=flat-square" alt="Platforms" />
   <img src="https://img.shields.io/badge/compatibility-Google%20Antigravity%20IDE%20%2F%20VS%20Code%20%5E1.80.0-purple.svg?style=flat-square" alt="Engines" />
   <img src="https://img.shields.io/badge/dependencies-zero%20(pure%20node)-orange.svg?style=flat-square" alt="Zero Dependencies" />
@@ -117,8 +118,8 @@ antigravity-ide \
 
 ## 📦 Installation
 
-### Option A: VS Marketplace Installation (Recommended)
-Search for **`Orbit - Antigravity Profiles`** (or `sajedulisakib-001.antigravity-orbit`) in the Extensions tab (<kbd>Cmd</kbd>/<kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>X</kbd>) and click **Install**.
+### Option A: Open VSX / VS Marketplace Installation (Recommended)
+Install directly from the [Open VSX Registry](https://open-vsx.org/extension/sajedulisakib-001/antigravity-orbit) or search for **`Orbit - Antigravity Profiles`** (or `sajedulisakib-001.antigravity-orbit`) in the Extensions tab (<kbd>Cmd</kbd>/<kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>X</kbd>) and click **Install**.
 
 ### Option B: Manual Installation
 1. Clone or copy the `antigravity-profiles` folder into your Antigravity IDE extensions directory:
@@ -189,14 +190,30 @@ flowchart TD
 
 ---
 
-## 🤝 Contributing
+## 🤝 Contributing & Platform Maintainers Wanted!
 
-Contributions, feature requests, and issue reports are warmly welcome!
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+> [!NOTE]
+> **🚀 Over 200+ Downloads in the First 48 Hours on Open VSX!**  
+> A huge thank you to the community for the rapid adoption and early feedback!
+
+### 🌍 Seeking Platform-Specific Contributors
+Orbit is engineered to be lightweight, zero-dependency, and cross-platform. Because low-level process spawning, path resolution, and window lifecycle management interact directly with operating system internals, we are actively looking for platform-specific contributors and testers to help boost performance and resolve edge-case bugs:
+
+- 🪟 **Windows**: PowerShell / CMD detached process launching, path normalization, antivirus / file-lock handling, and launch latency reduction.
+- 🍎 **macOS**: Apple Silicon (M-series) vs Intel architectures, app bundle launch behaviors, and multi-window focus transitions.
+- 🐧 **Linux & WSL**: Distribution-specific binary discovery (Debian, Arch, Fedora, openSUSE), Wayland vs X11 window management, and WSL2 environment interoperability.
+
+### 🛠️ Key Areas to Contribute
+- ⚡ **Performance Optimizations**: Profiling and reducing startup overhead, optimizing atomic registry operations, and speeding up self-propagation file sync.
+- 🐛 **Bug Fixes & Edge Cases**: Identifying, reporting, and resolving platform-specific quirks.
+- 🧪 **Hardware & Environment Testing**: Validating new releases across diverse OS configurations and shell environments.
+
+### 🚀 Getting Started
+1. Fork the repository on [GitHub](https://github.com/sajedulisakib-001/antigravity-orbit)
+2. Create a feature branch (`git checkout -b fix/windows-process-launch` or `feature/perf-optimization`)
+3. Commit your changes (`git commit -m 'perf: optimize file synchronization on startup'`)
+4. Push to your branch (`git push origin fix/windows-process-launch`)
+5. Open a Pull Request detailing your operating system, environment, and benchmark / test results!
 
 ---
 
