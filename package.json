@@ -2,7 +2,7 @@
   "name": "antigravity-orbit",
   "displayName": "Orbit - Antigravity Profiles",
   "description": "Switch orbits in a single click. Seamless, isolated developer profiles and sandboxed workspaces for Google Antigravity IDE.",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "publisher": "sajedulisakib-001",
   "icon": "icon.png",
   "repository": {
