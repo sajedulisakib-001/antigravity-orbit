@@ -2,7 +2,7 @@
   "name": "antigravity-orbit",
   "displayName": "Orbit - Antigravity Profiles",
   "description": "Switch orbits in a single click. Seamless, isolated developer profiles and sandboxed workspaces for Google Antigravity IDE.",
-  "version": "1.0.3",
+  "version": "1.0.5",
   "publisher": "sajedulisakib-001",
   "icon": "icon.png",
   "repository": {
@@ -10,6 +10,7 @@
     "url": "https://github.com/sajedulisakib-001/antigravity-orbit"
   },
   "scripts": {
+    "test": "node test/run-tests.js",
     "package": "npx @vscode/vsce package --no-dependencies",
     "publish:all": "node ./scripts/publish-all.js",
     "publish:vscode": "node ./scripts/publish-all.js --skip-ovsx",

@@ -28,7 +28,9 @@ function copyDirRecursiveSync(source, target) {
     const resolvedTarget = path.resolve(target);
 
     // Prevent recursive loop if target is located inside source
-    if (resolvedTarget.startsWith(resolvedSource + path.sep)) {
+    const lowerTarget = resolvedTarget.toLowerCase();
+    const lowerSource = resolvedSource.toLowerCase();
+    if (lowerTarget.startsWith(lowerSource + path.sep.toLowerCase()) || lowerTarget.startsWith(lowerSource + '/')) {
         return;
     }
 
@@ -44,7 +46,7 @@ function copyDirRecursiveSync(source, target) {
                 dereference: false,
                 filter: (src) => {
                     const base = path.basename(src);
-                    if (base === '.git' || base === '.DS_Store' || base === 'node_modules') {
+                    if (base === '.git' || base === '.DS_Store' || base === 'node_modules' || base === 'test' || base === '.vscode-test' || base === 'coverage' || base.endsWith('.test.js')) {
                         return false;
                     }
                     try {
@@ -68,7 +70,7 @@ function copyDirRecursiveSync(source, target) {
     try {
         const files = fs.readdirSync(resolvedSource);
         for (const file of files) {
-            if (file === '.git' || file === '.DS_Store' || file === 'node_modules') continue;
+            if (file === '.git' || file === '.DS_Store' || file === 'node_modules' || file === 'test' || file === '.vscode-test' || file === 'coverage' || file.endsWith('.test.js')) continue;
 
             const curSource = path.join(resolvedSource, file);
             const curTarget = path.join(resolvedTarget, file);
@@ -134,6 +136,17 @@ function syncExtensionToProfile(sourceExtPath, customExtDir) {
         const extJsonPath = path.join(customExtDir, 'extensions.json');
         if (fs.existsSync(extJsonPath)) {
             try {
+                let extVersion = '1.0.5';
+                try {
+                    const pkgPath = path.join(sourceExtPath, 'package.json');
+                    if (fs.existsSync(pkgPath)) {
+                        const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+                        if (pkg && typeof pkg.version === 'string' && pkg.version.trim()) {
+                            extVersion = pkg.version.trim();
+                        }
+                    }
+                } catch (e) { }
+
                 const raw = JSON.parse(fs.readFileSync(extJsonPath, 'utf8'));
                 if (Array.isArray(raw)) {
                     const filtered = raw.filter(item => {
@@ -142,7 +155,7 @@ function syncExtensionToProfile(sourceExtPath, customExtDir) {
                     });
                     filtered.push({
                         identifier: { id: 'sajedulisakib-001.antigravity-orbit' },
-                        version: '1.0.3',
+                        version: extVersion,
                         location: {
                             $mid: 1,
                             path: targetExtFolder,
@@ -204,7 +217,7 @@ function getProfileLastWorkspaceFromStorage(profileName, profilesRoot) {
         if (typeof lastActiveWindow.folder === 'string') {
             const fUri = lastActiveWindow.folder;
             if (fUri.startsWith('file://')) {
-                return decodeURIComponent(fileURLToPath(fUri));
+                return fileURLToPath(fUri);
             }
             return fUri;
         }
@@ -212,7 +225,7 @@ function getProfileLastWorkspaceFromStorage(profileName, profilesRoot) {
         if (lastActiveWindow.workspace && typeof lastActiveWindow.workspace.configPath === 'string') {
             const cUri = lastActiveWindow.workspace.configPath;
             if (cUri.startsWith('file://')) {
-                return decodeURIComponent(fileURLToPath(cUri));
+                return fileURLToPath(cUri);
             }
             return cUri;
         }
@@ -225,14 +238,14 @@ function getProfileLastWorkspaceFromStorage(profileName, profilesRoot) {
                 if (typeof wsData.folder === 'string') {
                     const fUri = wsData.folder;
                     if (fUri.startsWith('file://')) {
-                        return decodeURIComponent(fileURLToPath(fUri));
+                        return fileURLToPath(fUri);
                     }
                     return fUri;
                 }
                 if (typeof wsData.workspace === 'string') {
                     const wUri = wsData.workspace;
                     if (wUri.startsWith('file://')) {
-                        return decodeURIComponent(fileURLToPath(wUri));
+                        return fileURLToPath(wUri);
                     }
                     return wUri;
                 }

@@ -10,34 +10,71 @@ const { launchAntigravityInstance, validateWorkspacePath } = require('./launcher
 
 /**
  * Detects the active profile name of the currently running Antigravity IDE window.
+ * Comprehensive multi-layered detector designed to reliably resolve custom profiles
+ * across Windows (handling drive letter casing & path separators), macOS, and Linux.
+ *
+ * @param {vscode.ExtensionContext} [context]
+ * @returns {string} Profile identifier or 'Default'
  */
 function getCurrentProfile(context) {
     const profilesRoot = getProfilesRoot();
+    const candidatePaths = [];
 
-    // 1. Check process command-line arguments for custom directory flags
+    // 1. Gather all potential path sources from context
+    if (context) {
+        if (typeof context.extensionPath === 'string') candidatePaths.push(context.extensionPath);
+        if (context.extensionUri && typeof context.extensionUri.fsPath === 'string') candidatePaths.push(context.extensionUri.fsPath);
+        if (context.globalStorageUri && typeof context.globalStorageUri.fsPath === 'string') candidatePaths.push(context.globalStorageUri.fsPath);
+        if (context.logUri && typeof context.logUri.fsPath === 'string') candidatePaths.push(context.logUri.fsPath);
+        if (context.storageUri && typeof context.storageUri.fsPath === 'string') candidatePaths.push(context.storageUri.fsPath);
+        if (typeof context.globalStoragePath === 'string') candidatePaths.push(context.globalStoragePath);
+        if (typeof context.logPath === 'string') candidatePaths.push(context.logPath);
+        if (typeof context.storagePath === 'string') candidatePaths.push(context.storagePath);
+    }
+
+    // 2. Gather from process command-line arguments
     if (Array.isArray(process.argv)) {
         for (const arg of process.argv) {
-            if (typeof arg === 'string' && arg.includes('.antigravity-custom-profiles')) {
-                const match = arg.match(/[/\\]\.antigravity-custom-profiles[/\\]([^/\\]+)/);
-                if (match && match[1]) {
-                    const safe = sanitizeProfileName(match[1]);
-                    if (safe) return safe;
-                }
+            if (typeof arg === 'string' && arg.length > 0) {
+                candidatePaths.push(arg);
             }
         }
     }
 
-    // 2. Check extension path location
-    const extPath = (context && context.extensionPath) ? context.extensionPath : path.resolve(__dirname, '..');
-    const normalizedExtPath = path.normalize(extPath);
-    const normalizedProfilesRoot = path.normalize(profilesRoot);
+    // 3. Fallback to module directory if context is not available
+    if (typeof __dirname === 'string') {
+        candidatePaths.push(__dirname);
+    }
 
-    if (normalizedExtPath.startsWith(normalizedProfilesRoot)) {
-        const rel = path.relative(normalizedProfilesRoot, normalizedExtPath);
-        const parts = rel.split(path.sep);
-        if (parts.length > 0 && parts[0]) {
-            const safe = sanitizeProfileName(parts[0]);
-            if (safe) return safe;
+    // Pattern 1: Fast regex extraction matching custom profiles folder anywhere in path (case-insensitive)
+    const profileRegex = /[/\\]\.antigravity-custom-profiles[/\\]([^/\\]+)/i;
+    for (const item of candidatePaths) {
+        if (!item || typeof item !== 'string') continue;
+        const match = item.match(profileRegex);
+        if (match && match[1]) {
+            const raw = match[1].trim();
+            if (raw.toLowerCase() !== 'default') {
+                const safe = sanitizeProfileName(raw);
+                if (safe) return safe;
+            }
+        }
+    }
+
+    // Pattern 2: Case-insensitive prefix / relative path check against getProfilesRoot()
+    const normProfilesRoot = path.normalize(profilesRoot).toLowerCase();
+    for (const item of candidatePaths) {
+        if (!item || typeof item !== 'string') continue;
+        const normItem = path.normalize(item).toLowerCase();
+        if (normItem.startsWith(normProfilesRoot + path.sep.toLowerCase()) || normItem.startsWith(normProfilesRoot + '/')) {
+            const rel = normItem.slice(normProfilesRoot.length).replace(/^[/\\]+/, '');
+            const parts = rel.split(/[/\\]/);
+            if (parts.length > 0 && parts[0]) {
+                const raw = parts[0].trim();
+                if (raw.toLowerCase() !== 'default') {
+                    const safe = sanitizeProfileName(raw);
+                    if (safe) return safe;
+                }
+            }
         }
     }
 
@@ -58,13 +95,25 @@ function getCurrentWorkspacePath() {
     return undefined;
 }
 
+let isSwitchingProfile = false;
+
+function setSwitchingInProgress(val) {
+    isSwitchingProfile = Boolean(val);
+}
+
+function isSwitchingInProgress() {
+    return isSwitchingProfile;
+}
+
 /**
  * Updates and persists the current workspace path for the active custom profile.
  * If no workspace folder is open, sets lastWorkspacePath to null.
  *
  * @param {string} profileName
+ * @param {object} [options]
+ * @param {boolean} [options.updateLastActive=false] Whether to also update registry.lastActiveProfile.
  */
-function updateActiveProfileWorkspace(profileName) {
+function updateActiveProfileWorkspace(profileName, { updateLastActive = false } = {}) {
     if (!profileName || typeof profileName !== 'string' || profileName.toLowerCase() === 'default') {
         return;
     }
@@ -79,10 +128,21 @@ function updateActiveProfileWorkspace(profileName) {
         if (registry.profiles[matchedKey]) {
             const previousWs = registry.profiles[matchedKey].lastWorkspacePath;
             const newWs = safeWs || null;
-            if (previousWs !== newWs || registry.lastActiveProfile !== matchedKey) {
+            let changed = false;
+
+            if (previousWs !== newWs) {
                 registry.profiles[matchedKey].lastWorkspacePath = newWs;
                 registry.profiles[matchedKey].lastUsed = new Date().toISOString();
+                changed = true;
+            }
+
+            if (updateLastActive && registry.lastActiveProfile !== matchedKey) {
                 registry.lastActiveProfile = matchedKey;
+                registry.profiles[matchedKey].lastUsed = new Date().toISOString();
+                changed = true;
+            }
+
+            if (changed) {
                 saveProfilesRegistry(registryPath, registry);
             }
         }
@@ -99,6 +159,9 @@ async function launchProfile(profileName, context, { workspacePath, closeCurrent
 
     if (isDefault) {
         try {
+            if (closeCurrent) {
+                setSwitchingInProgress(true);
+            }
             registry.lastActiveProfile = 'Default';
             saveProfilesRegistry(registryPath, registry);
 
@@ -167,6 +230,9 @@ async function launchProfile(profileName, context, { workspacePath, closeCurrent
             if (workspacePath !== undefined) {
                 registry.profiles[safeName].lastWorkspacePath = validatedWs || null;
             }
+        }
+        if (closeCurrent) {
+            setSwitchingInProgress(true);
         }
         registry.lastActiveProfile = safeName;
         saveProfilesRegistry(registryPath, registry);
@@ -370,7 +436,9 @@ async function showDeleteProfileMenu(context) {
             const profileDir = path.resolve(profilesRoot, safeKey);
 
             // Security: Strict path boundary check to prevent deleting parent directories or root
-            if (!profileDir.startsWith(resolvedRoot + path.sep) || profileDir === resolvedRoot) {
+            const lowerDir = profileDir.toLowerCase();
+            const lowerRoot = resolvedRoot.toLowerCase();
+            if (!lowerDir.startsWith(lowerRoot + path.sep.toLowerCase()) || lowerDir === lowerRoot) {
                 throw new Error('Access denied: Profile path is outside authorized storage root.');
             }
 
@@ -489,6 +557,8 @@ async function showProfileMenu(context) {
 module.exports = {
     getCurrentProfile,
     getCurrentWorkspacePath,
+    isSwitchingInProgress,
+    setSwitchingInProgress,
     launchProfile,
     promptCreateProfile,
     promptProfileActions,

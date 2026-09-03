@@ -148,11 +148,12 @@ function findAntigravityLinux() {
 function spawnDetached(bin, args, options = {}) {
     return new Promise((resolve, reject) => {
         try {
+            const isCmd = process.platform === 'win32' && (bin.endsWith('.cmd') || bin.endsWith('.bat'));
             const child = spawn(bin, args, {
                 ...options,
                 detached: true,
                 stdio: 'ignore',
-                shell: false // Security: strictly disable shell interpolation
+                shell: isCmd // Enable shell only for Windows .cmd/.bat scripts
             });
 
             // Prevent unhandled 'error' event crash if executable cannot be spawned
@@ -224,7 +225,12 @@ async function launchAntigravityInstance({ customExtDir, customDataDir, workspac
         }
 
         // Fallback: /usr/bin/open
-        const openArgs = ['-n', '-b', 'com.google.antigravity-ide'];
+        const openArgs = ['-n'];
+        if (target && target.appPath) {
+            openArgs.push('-a', target.appPath);
+        } else {
+            openArgs.push('-b', 'com.google.antigravity-ide');
+        }
         if (hasCustomDirs || validWorkspace) {
             openArgs.push('--args');
             if (hasCustomDirs) {

@@ -1,5 +1,9 @@
 .vscode/**
 .vscode-test/**
+test/**
+*.test.js
+*.spec.js
+coverage/**
 .git/**
 .gitignore
 .env*

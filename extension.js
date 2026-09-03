@@ -6,6 +6,7 @@ const { syncExtensionToAllProfiles, getProfileLastWorkspaceFromStorage } = requi
 const {
     getCurrentProfile,
     getCurrentWorkspacePath,
+    isSwitchingInProgress,
     launchProfile,
     showProfileMenu,
     promptCreateProfile,
@@ -38,7 +39,24 @@ async function activate(context) {
     // If starting in Default profile, check if we should seamlessly restore the last active custom profile
     if (currentProfile.toLowerCase() === 'default') {
         const lastActive = registry.lastActiveProfile;
-        if (autoRestore && lastActive && lastActive.toLowerCase() !== 'default') {
+
+        // Guard: Prevent auto-restoring/closing window during auth callbacks, URI redirects, or CLI operations
+        let isSpecialInvocation = false;
+        if (Array.isArray(process.argv)) {
+            for (const arg of process.argv) {
+                if (typeof arg === 'string') {
+                    const lower = arg.toLowerCase();
+                    if (lower.startsWith('antigravity://') || lower.startsWith('vscode://') || lower.startsWith('vscode-insiders://') ||
+                        lower === '--open-url' || lower === '--status' || lower === '--version' || lower === '-v' ||
+                        lower === '--list-extensions' || lower === '--install-extension') {
+                        isSpecialInvocation = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!isSpecialInvocation && autoRestore && lastActive && lastActive.toLowerCase() !== 'default') {
             const matchedKey = findProfileKey(registry, lastActive);
             if (matchedKey && registry.profiles[matchedKey]) {
                 let savedWs = registry.profiles[matchedKey].lastWorkspacePath;
@@ -55,13 +73,19 @@ async function activate(context) {
                 return;
             }
         }
+
+        // If not auto-restoring (or disabled / profile missing), ensure registry marks Default as last active
+        if (registry.lastActiveProfile !== 'Default') {
+            registry.lastActiveProfile = 'Default';
+            saveProfilesRegistry(registryPath, registry);
+        }
     } else {
         // Record this custom profile and its current workspace
-        updateActiveProfileWorkspace(currentProfile);
+        updateActiveProfileWorkspace(currentProfile, { updateLastActive: true });
 
         // Listen for workspace folder changes in real-time (e.g. folder opened, changed, or closed)
         const wsWatcher = vscode.workspace.onDidChangeWorkspaceFolders(() => {
-            updateActiveProfileWorkspace(currentProfile);
+            updateActiveProfileWorkspace(currentProfile, { updateLastActive: true });
         });
         context.subscriptions.push(wsWatcher);
     }
@@ -98,9 +122,9 @@ async function activate(context) {
 }
 
 function deactivate() {
-    if (activeProfileName && activeProfileName.toLowerCase() !== 'default') {
+    if (!isSwitchingInProgress() && activeProfileName && activeProfileName.toLowerCase() !== 'default') {
         try {
-            updateActiveProfileWorkspace(activeProfileName);
+            updateActiveProfileWorkspace(activeProfileName, { updateLastActive: false });
         } catch (e) { }
     }
 }

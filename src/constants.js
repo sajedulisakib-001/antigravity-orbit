@@ -32,7 +32,7 @@ function getExtensionFolderName(sourceExtPath) {
             }
         }
     } catch (e) { }
-    return 'sajedulisakib-001.antigravity-orbit-1.0.2';
+    return 'sajedulisakib-001.antigravity-orbit-1.0.5';
 }
 
 module.exports = {
